@@ -10269,6 +10269,55 @@ window.bxcLoad=bxcLoad;
 })();
 </script>
 
+<!-- ═══ PAIR DOSSIER (v_pair_dossier) — factor-decompositie per FX-paar · additief, hergebruikt .bxc-stijl ═══ -->
+<div class="bxc-pairs" style="margin-top:18px" id="pdoss-wrap">
+  <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px">
+    <h3 style="margin:0">PAIR DOSSIER · Factor-decompositie</h3>
+    <span style="font-size:.7rem;color:rgba(200,210,230,.4)">carry · momentum · value · positioning (gewogen bijdrage)</span>
+    <span style="margin-left:auto;font-size:.7rem;color:rgba(200,210,230,.4)" id="pdoss-ts">—</span>
+  </div>
+  <table class="bxc-pair-table">
+    <thead><tr>
+      <th>Pair</th><th>Signaal</th><th>Total</th><th>Driver</th>
+      <th>Carry</th><th>Mom</th><th>Value</th><th>Pos</th>
+    </tr></thead>
+    <tbody id="pdoss-rows"><tr><td colspan="8" style="color:rgba(200,210,230,.4);padding:10px 8px">Laden…</td></tr></tbody>
+  </table>
+</div>
+<script>
+(function(){
+'use strict';
+function pdBase(){ if(typeof WORKER!=='undefined')return WORKER; if(typeof SB_URL!=='undefined')return SB_URL; return 'https://moneymaker01.mghjklaassen.workers.dev'; }
+function pdHdr(){ if(typeof SB_HDR!=='undefined')return SB_HDR; if(typeof SB_KEY!=='undefined')return {apikey:SB_KEY,Authorization:'Bearer '+SB_KEY}; return {}; }
+async function pdFetch(path){ try{ const r=await fetch(pdBase()+path,{headers:pdHdr()}); if(!r.ok)throw 0; return await r.json(); }catch(e){ return null; } }
+function pdSigCls(s){ return s==='LONG'?'bxc-pill-l':s==='SHORT'?'bxc-pill-s':'bxc-pill-n'; }
+function pdContrib(v){ const n=v==null?null:parseFloat(v); if(n===null||isNaN(n))return '<td style="color:rgba(200,210,230,.3)">—</td>'; const col=n>0.05?'#4ac47d':n<-0.05?'#ef4444':'rgba(139,152,190,.6)'; return `<td style="color:${col};font-variant-numeric:tabular-nums">${n>=0?'+':''}${n.toFixed(2)}</td>`; }
+async function pdossLoad(force){
+  const body=document.getElementById('pdoss-rows'); if(!body)return;
+  if(body.dataset.loaded==='1'&&!force)return;
+  const rows=await pdFetch('/rest/v1/v_pair_dossier?select=pair,signal,total,dominant_driver,carry_contrib,momentum_contrib,value_contrib,positioning_contrib,is_fresh&order=total.desc');
+  if(!Array.isArray(rows)||!rows.length){ body.innerHTML='<tr><td colspan="8" style="color:rgba(200,210,230,.4);padding:10px 8px">Geen data (v_pair_dossier)</td></tr>'; return; }
+  body.innerHTML=rows.map(function(r){
+    const stale=r.is_fresh===false?' <span title="verouderd" style="color:#f0a020">⚠</span>':'';
+    const tot=r.total==null?'—':(r.total>=0?'+':'')+Number(r.total).toFixed(2);
+    return '<tr>'
+      +'<td style="font-weight:600">'+r.pair+stale+'</td>'
+      +'<td><span class="bxc-pill '+pdSigCls(r.signal)+'" style="padding:2px 7px">'+(r.signal||'—')+'</span></td>'
+      +'<td style="font-variant-numeric:tabular-nums">'+tot+'</td>'
+      +'<td style="text-transform:uppercase;font-size:.7rem;color:rgba(212,180,120,.85)">'+(r.dominant_driver||'—')+'</td>'
+      +pdContrib(r.carry_contrib)+pdContrib(r.momentum_contrib)+pdContrib(r.value_contrib)+pdContrib(r.positioning_contrib)
+      +'</tr>';
+  }).join('');
+  body.dataset.loaded='1';
+  const ts=document.getElementById('pdoss-ts'); if(ts)ts.textContent=new Date().toLocaleString('nl-NL',{hour:'2-digit',minute:'2-digit'});
+}
+window.pdossLoad=pdossLoad;
+// Haak op tab-switch naar bias-chart (zelfde tab als BIAS × CHART); wrapper roept de vorige door.
+(function(){ const _o=window.mccSwitchTab; if(typeof _o==='function'&&!window._pdossHooked){ window._pdossHooked=true; window.mccSwitchTab=function(n){ _o(n); if(n==='bias-chart')pdossLoad(false); }; } })();
+document.addEventListener('DOMContentLoaded',function(){ setTimeout(function(){ pdossLoad(false); },1200); });
+})();
+</script>
+
 <!-- ═══ TAB: ROADMAP (Macro OS Buildability Map) ═══ -->
 <div id="tab-roadmap" class="tab-content" style="padding:20px;max-width:none;background:#060d1a;color:#dce8f8;min-height:100vh">
   <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid rgba(212,180,120,.15)">
