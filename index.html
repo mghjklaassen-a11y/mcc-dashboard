@@ -10318,6 +10318,141 @@ document.addEventListener('DOMContentLoaded',function(){ setTimeout(function(){ 
 })();
 </script>
 
+<!-- ═══ DOSSIER-PANELEN (additief) — kapitaalstromen · strategy-scoreboard · BTC · progressive disclosure ═══ -->
+<!-- Zelfde patroon als PAIR DOSSIER: eigen <details>+IIFE, hergebruikt .bxc-stijl, faalt netjes ("Geen data"),
+     load-on-open (progressive disclosure) zodat verborgen panelen niet fetchen. Raakt geen bestaand paneel. -->
+<script>
+/* gedeelde, defensieve fetch-helper (zelfde bron-resolutie als PAIR DOSSIER) */
+window.__dfetch = window.__dfetch || async function(path){
+  try{
+    var b=(typeof WORKER!=='undefined'?WORKER:(typeof SB_URL!=='undefined'?SB_URL:'https://moneymaker01.mghjklaassen.workers.dev'));
+    var h=(typeof SB_HDR!=='undefined'?SB_HDR:(typeof SB_KEY!=='undefined'?{apikey:SB_KEY,Authorization:'Bearer '+SB_KEY}:{}));
+    var r=await fetch(b+path,{headers:h}); if(!r.ok)throw 0; return await r.json();
+  }catch(e){ return null; }
+};
+</script>
+
+<!-- ── KAPITAALSTROMEN (v_capital_flows) ── -->
+<details class="bxc-pairs" style="margin-top:14px" ontoggle="if(this.open&&window.cfLoad)window.cfLoad(false)">
+  <summary style="cursor:pointer;display:flex;align-items:baseline;gap:10px;padding:6px 0">
+    <h3 style="margin:0;display:inline">KAPITAALSTROMEN · COT-positionering</h3>
+    <span style="font-size:.7rem;color:rgba(200,210,230,.4)">spec/comm net · %OI · 4w-Δ · crowding-percentiel</span>
+    <span style="margin-left:auto;font-size:.7rem;color:rgba(200,210,230,.4)" id="cf-ts">▸ klik om te tonen</span>
+  </summary>
+  <table class="bxc-pair-table" style="margin-top:8px">
+    <thead><tr><th>Munt</th><th>Spec net</th><th>Comm net</th><th>%OI</th><th>Δ4w</th><th>Crowd z</th><th>Pctile</th><th>Label</th></tr></thead>
+    <tbody id="cf-rows"><tr><td colspan="8" style="color:rgba(200,210,230,.4);padding:10px 8px">Laden…</td></tr></tbody>
+  </table>
+</details>
+<script>
+(function(){ 'use strict';
+function K(v){ if(v==null||isNaN(+v))return '—'; var n=+v; var s=Math.abs(n)>=1000?(n/1000).toFixed(1)+'k':n.toFixed(0); return (n>0?'+':'')+s; }
+function num(v,d){ if(v==null||isNaN(+v))return '<td style="color:rgba(200,210,230,.3)">—</td>'; var n=+v; var c=n>0?'#4ac47d':n<0?'#ef4444':'rgba(139,152,190,.6)'; return '<td style="color:'+c+';font-variant-numeric:tabular-nums">'+(n>0?'+':'')+n.toFixed(d)+'</td>'; }
+function lblCls(s){ s=(s||'').toUpperCase(); return s.indexOf('LONG')>=0?'bxc-pill-l':s.indexOf('SHORT')>=0?'bxc-pill-s':'bxc-pill-n'; }
+async function cfLoad(force){
+  var body=document.getElementById('cf-rows'); if(!body)return; if(body.dataset.loaded==='1'&&!force)return;
+  var rows=await window.__dfetch('/rest/v1/v_capital_flows?select=ccy,spec_net,comm_net,net_pct_oi,flow_chg_4w,crowd_z,crowd_pctile,crowd_label,cot_report_date&order=crowd_pctile.desc.nullslast');
+  if(!Array.isArray(rows)||!rows.length){ body.innerHTML='<tr><td colspan="8" style="color:rgba(200,210,230,.4);padding:10px 8px">Geen data (v_capital_flows)</td></tr>'; return; }
+  body.innerHTML=rows.map(function(r){
+    return '<tr>'
+      +'<td style="font-weight:600">'+(r.ccy||'—')+'</td>'
+      +'<td style="font-variant-numeric:tabular-nums">'+K(r.spec_net)+'</td>'
+      +'<td style="font-variant-numeric:tabular-nums;color:rgba(200,210,230,.6)">'+K(r.comm_net)+'</td>'
+      +num(r.net_pct_oi,1)+num(r.flow_chg_4w,1)+num(r.crowd_z,2)
+      +'<td style="font-variant-numeric:tabular-nums">'+(r.crowd_pctile==null?'—':Math.round(r.crowd_pctile)+'%')+'</td>'
+      +'<td><span class="bxc-pill '+lblCls(r.crowd_label)+'" style="padding:2px 7px">'+(r.crowd_label||'—')+'</span></td>'
+      +'</tr>';
+  }).join('');
+  body.dataset.loaded='1';
+  var ts=document.getElementById('cf-ts'); if(ts)ts.textContent=(rows[0]&&rows[0].cot_report_date?('COT '+rows[0].cot_report_date):'')+' · '+new Date().toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'});
+}
+window.cfLoad=cfLoad;
+(function(){ var _o=window.mccSwitchTab; if(typeof _o==='function'&&!window._cfHooked){ window._cfHooked=true; window.mccSwitchTab=function(n){ _o(n); }; } })();
+})();
+</script>
+
+<!-- ── STRATEGY-SCOREBOARD (v_strategy_scoreboard) ── -->
+<details class="bxc-pairs" style="margin-top:14px" ontoggle="if(this.open&&window.ssLoad)window.ssLoad(false)">
+  <summary style="cursor:pointer;display:flex;align-items:baseline;gap:10px;padding:6px 0">
+    <h3 style="margin:0;display:inline">STRATEGY-SCOREBOARD · edge per bron</h3>
+    <span style="font-size:.7rem;color:rgba(200,210,230,.4)">n · hit-rate · gem. rendement · rijpingsstatus</span>
+    <span style="margin-left:auto;font-size:.7rem;color:rgba(200,210,230,.4)" id="ss-ts">▸ klik om te tonen</span>
+  </summary>
+  <table class="bxc-pair-table" style="margin-top:8px">
+    <thead><tr><th>Strategie</th><th>Scope</th><th>n</th><th>Hit%</th><th>Gem. ret</th><th>Status</th></tr></thead>
+    <tbody id="ss-rows"><tr><td colspan="6" style="color:rgba(200,210,230,.4);padding:10px 8px">Laden…</td></tr></tbody>
+  </table>
+</details>
+<script>
+(function(){ 'use strict';
+async function ssLoad(force){
+  var body=document.getElementById('ss-rows'); if(!body)return; if(body.dataset.loaded==='1'&&!force)return;
+  var rows=await window.__dfetch('/rest/v1/v_strategy_scoreboard?select=strategy,scope,n,hit_pct,avg_ret,ret_unit,status&order=n.desc.nullslast');
+  if(!Array.isArray(rows)||!rows.length){ body.innerHTML='<tr><td colspan="6" style="color:rgba(200,210,230,.4);padding:10px 8px">Geen data (v_strategy_scoreboard)</td></tr>'; return; }
+  body.innerHTML=rows.map(function(r){
+    var hit=(r.hit_pct==null)?'—':(Math.round(r.hit_pct)+'%');
+    var hc=(r.hit_pct==null)?'rgba(200,210,230,.4)':(r.hit_pct>=55?'#4ac47d':r.hit_pct<=45?'#ef4444':'rgba(212,180,120,.85)');
+    var av=(r.avg_ret==null)?'—':((r.avg_ret>0?'+':'')+Number(r.avg_ret).toFixed(2)+(r.ret_unit?(' '+r.ret_unit):''));
+    var ac=(r.avg_ret==null)?'rgba(200,210,230,.4)':(r.avg_ret>0?'#4ac47d':r.avg_ret<0?'#ef4444':'rgba(139,152,190,.6)');
+    return '<tr>'
+      +'<td style="font-weight:600">'+(r.strategy||'—')+'</td>'
+      +'<td style="color:rgba(200,210,230,.65)">'+(r.scope||'—')+'</td>'
+      +'<td style="font-variant-numeric:tabular-nums">'+(r.n==null?'—':r.n)+'</td>'
+      +'<td style="color:'+hc+';font-variant-numeric:tabular-nums">'+hit+'</td>'
+      +'<td style="color:'+ac+';font-variant-numeric:tabular-nums">'+av+'</td>'
+      +'<td style="font-size:.72rem;color:rgba(200,210,230,.55)">'+(r.status||'—')+'</td>'
+      +'</tr>';
+  }).join('');
+  body.dataset.loaded='1';
+  var ts=document.getElementById('ss-ts'); if(ts)ts.textContent=new Date().toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'});
+}
+window.ssLoad=ssLoad;
+})();
+</script>
+
+<!-- ── BITCOIN-DOSSIER (v_btc_dossier) ── -->
+<details class="bxc-pairs" style="margin-top:14px" ontoggle="if(this.open&&window.bdLoad)window.bdLoad(false)">
+  <summary style="cursor:pointer;display:flex;align-items:baseline;gap:10px;padding:6px 0">
+    <h3 style="margin:0;display:inline">BITCOIN-DOSSIER · driver-decompositie</h3>
+    <span style="font-size:.7rem;color:rgba(200,210,230,.4)">5 driver-z (dxy · net-liq · real-yield · positionering · regime) + markt-context</span>
+    <span style="margin-left:auto;font-size:.7rem;color:rgba(200,210,230,.4)" id="bd-ts">▸ klik om te tonen</span>
+  </summary>
+  <div id="bd-body" style="margin-top:8px;color:rgba(200,210,230,.5);padding:8px">Laden…</div>
+</details>
+<script>
+(function(){ 'use strict';
+function chip(label,v){ var n=(v==null||isNaN(+v))?null:+v; var col=n===null?'rgba(139,152,190,.5)':(n>0.05?'#4ac47d':n<-0.05?'#ef4444':'rgba(139,152,190,.6)'); var val=n===null?'—':((n>0?'+':'')+n.toFixed(2)); return '<span style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;min-width:64px;padding:6px 8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:6px"><span style="font-size:.62rem;text-transform:uppercase;letter-spacing:.04em;color:rgba(200,210,230,.5)">'+label+'</span><span style="font-variant-numeric:tabular-nums;font-weight:600;color:'+col+'">'+val+'</span></span>'; }
+function ctx(label,v,suf){ var s=(v==null||isNaN(+v))?'—':(Number(v).toLocaleString('nl-NL',{maximumFractionDigits:2})+(suf||'')); return '<span style="color:rgba(200,210,230,.6)"><span style="color:rgba(200,210,230,.4)">'+label+'</span> '+s+'</span>'; }
+async function bdLoad(force){
+  var box=document.getElementById('bd-body'); if(!box)return; if(box.dataset.loaded==='1'&&!force)return;
+  var rows=await window.__dfetch('/rest/v1/v_btc_dossier?select=price_usd,signal,driver_sum,dominant_driver,drv_dxy,drv_net_liq,drv_real_yield,drv_positioning,drv_regime,cot_net,tv_composite,btc_dominance_pct,btc_gold_ratio,btc_eth_ratio,nasdaq_corr_break,bias_age_h,is_fresh&limit=1');
+  if(!Array.isArray(rows)||!rows.length){ box.innerHTML='<span style="color:rgba(200,210,230,.4)">Geen data (v_btc_dossier)</span>'; return; }
+  var r=rows[0];
+  var sig=(r.signal||'—'); var scls=sig==='LONG'?'bxc-pill-l':sig==='SHORT'?'bxc-pill-s':'bxc-pill-n';
+  var stale=r.is_fresh===false?' <span title="verouderd" style="color:#f0a020">⚠</span>':'';
+  var sum=(r.driver_sum==null)?'—':((r.driver_sum>0?'+':'')+Number(r.driver_sum).toFixed(2));
+  var sumc=(r.driver_sum==null)?'rgba(200,210,230,.5)':(r.driver_sum>0.4?'#4ac47d':r.driver_sum<-0.4?'#ef4444':'rgba(212,180,120,.85)');
+  box.innerHTML=
+    '<div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:12px">'
+      +'<span style="font-size:1.15rem;font-weight:700">BTC $'+(r.price_usd==null?'—':Number(r.price_usd).toLocaleString('nl-NL'))+stale+'</span>'
+      +'<span class="bxc-pill '+scls+'" style="padding:3px 10px">'+sig+'</span>'
+      +'<span style="color:'+sumc+';font-variant-numeric:tabular-nums">driver-som '+sum+'</span>'
+      +'<span style="text-transform:uppercase;font-size:.72rem;color:rgba(212,180,120,.85)">dominant: '+(r.dominant_driver||'—')+'</span>'
+    +'</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'
+      +chip('dxy',r.drv_dxy)+chip('net-liq',r.drv_net_liq)+chip('real-yield',r.drv_real_yield)+chip('positie',r.drv_positioning)+chip('regime',r.drv_regime)
+    +'</div>'
+    +'<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:.78rem">'
+      +ctx('Dominantie',r.btc_dominance_pct,'%')+ctx('BTC/Goud',r.btc_gold_ratio,'')+ctx('BTC/ETH',r.btc_eth_ratio,'')
+      +ctx('COT-net',r.cot_net,'')+ctx('TV-composite',r.tv_composite,'')+ctx('NASDAQ-corr-breuk',r.nasdaq_corr_break,'')
+    +'</div>';
+  box.dataset.loaded='1';
+  var ts=document.getElementById('bd-ts'); if(ts)ts.textContent=(r.bias_age_h!=null?('bias '+Number(r.bias_age_h).toFixed(0)+'u'):'')+' · '+new Date().toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'});
+}
+window.bdLoad=bdLoad;
+})();
+</script>
+
 <!-- ═══ TAB: ROADMAP (Macro OS Buildability Map) ═══ -->
 <div id="tab-roadmap" class="tab-content" style="padding:20px;max-width:none;background:#060d1a;color:#dce8f8;min-height:100vh">
   <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid rgba(212,180,120,.15)">
