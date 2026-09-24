@@ -10453,6 +10453,43 @@ window.bdLoad=bdLoad;
 })();
 </script>
 
+<!-- ── RENTE-VERWACHTING (v_cb_rate_expectation) — markt-ingeprijsd beleidspad, alle G8 ── -->
+<details class="bxc-pairs" style="margin-top:14px" ontoggle="if(this.open&&window.reLoad)window.reLoad(false)">
+  <summary style="cursor:pointer;display:flex;align-items:baseline;gap:10px;padding:6px 0">
+    <h3 style="margin:0;display:inline">RENTE-VERWACHTING · markt-ingeprijsd 1Y-pad</h3>
+    <span style="font-size:.7rem;color:rgba(200,210,230,.4)">policy · 1Y-gap (bp) · volgende zet · 4w-drift · yield-proxy (geen zuivere OIS)</span>
+    <span style="margin-left:auto;font-size:.7rem;color:rgba(200,210,230,.4)" id="re-ts">▸ klik om te tonen</span>
+  </summary>
+  <table class="bxc-pair-table" style="margin-top:8px">
+    <thead><tr><th>Munt</th><th>Policy</th><th>1Y-gap</th><th>Volgende zet (1Y)</th><th>4w-drift</th><th>1y1y-fwd</th></tr></thead>
+    <tbody id="re-rows"><tr><td colspan="6" style="color:rgba(200,210,230,.4);padding:10px 8px">Laden…</td></tr></tbody>
+  </table>
+</details>
+<script>
+(function(){ 'use strict';
+function bp(v){ if(v==null||isNaN(+v))return '<td style="color:rgba(200,210,230,.3)">—</td>'; var n=Math.round(+v); var c=n<=-15?'#4ac47d':n>=15?'#ef4444':'rgba(139,152,190,.6)'; return '<td style="color:'+c+';font-variant-numeric:tabular-nums">'+(n>0?'+':'')+n+'bp</td>'; }
+function mv(m){ m=String(m||''); var t=m.indexOf('Cut')===0?'🕊 cut':(m.indexOf('Hike')===0?'🦅 hawkish':(m.indexOf('Hold')===0?'• hold':'—')); var c=m.indexOf('Cut')===0?'#4ac47d':(m.indexOf('Hike')===0?'#ef4444':'rgba(200,210,230,.7)'); return '<td style="color:'+c+'">'+t+'</td>'; }
+function dr(d){ d=String(d||''); var c=d.indexOf('dovish')>=0?'#4ac47d':(d.indexOf('hawkish')>=0?'#ef4444':'rgba(200,210,230,.55)'); return '<td style="color:'+c+';font-size:.78rem">'+(d||'—')+'</td>'; }
+function pol(v){ return '<td style="font-variant-numeric:tabular-nums;color:rgba(200,210,230,.75)">'+(v==null||isNaN(+v)?'—':Number(v).toFixed(2)+'%')+'</td>'; }
+async function reLoad(force){
+  var body=document.getElementById('re-rows'); if(!body)return; if(body.dataset.loaded==='1'&&!force)return;
+  var rows=await window.__dfetch('/rest/v1/v_cb_rate_expectation?select=ccy,policy,priced_1y_bps,next_move_1y,drift_4w,fwd_1y1y&order=priced_1y_bps.asc.nullslast');
+  if(!Array.isArray(rows)||!rows.length){ body.innerHTML='<tr><td colspan="6" style="color:rgba(200,210,230,.4);padding:10px 8px">Geen data (v_cb_rate_expectation)</td></tr>'; return; }
+  body.innerHTML=rows.map(function(r){
+    var f1=(r.fwd_1y1y==null||isNaN(+r.fwd_1y1y))?'—':Number(r.fwd_1y1y).toFixed(2)+'%';
+    return '<tr>'
+      +'<td style="font-weight:600">'+(r.ccy||'—')+'</td>'
+      +pol(r.policy)+bp(r.priced_1y_bps)+mv(r.next_move_1y)+dr(r.drift_4w)
+      +'<td style="font-variant-numeric:tabular-nums;color:rgba(200,210,230,.7)">'+f1+'</td>'
+      +'</tr>';
+  }).join('');
+  body.dataset.loaded='1';
+  var ts=document.getElementById('re-ts'); if(ts)ts.textContent=new Date().toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'});
+}
+window.reLoad=reLoad;
+})();
+</script>
+
 <!-- ═══ TAB: ROADMAP (Macro OS Buildability Map) ═══ -->
 <div id="tab-roadmap" class="tab-content" style="padding:20px;max-width:none;background:#060d1a;color:#dce8f8;min-height:100vh">
   <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid rgba(212,180,120,.15)">
