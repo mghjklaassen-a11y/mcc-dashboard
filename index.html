@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230b1224'/%3E%3Cpath d='M7 22 L13 14 L18 18 L25 9' stroke='%23d4a843' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <meta name="robots" content="noindex, nofollow">
 <meta name="googlebot" content="noindex, nofollow">
 <meta charset="UTF-8">
@@ -13980,6 +13981,12 @@ async function fetchAnthropicThrottled(opts, timeoutMs = 90000) {
   return resp;
 }
 function fetchT(url, opts={}, ms=15000) {
+  // Legacy write-back naar macro_readings uitgeschakeld: de tabel is dood (VM schrijft naar
+  // macro_scraped), RLS blokkeert anon-writes (401 in de console) en een publieke pagina hoort
+  // niet in de DB te schrijven. Reads van macro_readings blijven gewoon werken.
+  if (String(url).includes('/rest/v1/macro_readings') && String((opts && opts.method) || 'GET').toUpperCase() === 'POST') {
+    return Promise.resolve(new Response(null, { status: 204, statusText: 'write-back disabled' }));
+  }
   // AbortSignal kan niet via postMessage in artifact-iframes — gebruik Promise.race
   const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms));
   return Promise.race([fetch(url, opts), timeout]);
