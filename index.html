@@ -36999,7 +36999,7 @@ body.theme-light #tab-weekplan{background:#f5f0e8;--wp-ink:#1b2333;--wp-dim:#5a6
     var color = nCrit>0 ? {bg:'rgba(60,14,14,.97)',bd:'#ef4444',fg:'#fca5a5',ic:'⛔'}
               : dbFail  ? {bg:'rgba(60,40,10,.97)',bd:'#f59e0b',fg:'#fcd34d',ic:'⚠'}
               :           {bg:'rgba(55,42,10,.97)',bd:'#f59e0b',fg:'#fcd34d',ic:'⚠'};
-    var msg = dbFail ? 'Kan data-health niet ophalen — versheid onbekend, behandel data als verdacht'
+    var msg = dbFail ? 'Data-health tijdelijk niet op te halen — versheid nu onbekend (probeer een refresh)'
       : (nCrit>0 ? nCrit+' KRITIEKE bron(nen) verouderd' : nAny+' bron(nen) verouderd')
         + (nAny>nCrit && nCrit>0 ? ' · +'+(nAny-nCrit)+' waarschuwing' : '');
     bar.innerHTML='<div style="border-top:2px solid '+color.bd+';background:'+color.bg+';color:'+color.fg+';backdrop-filter:blur(6px);padding:8px 14px;display:flex;align-items:center;gap:12px;box-shadow:0 -2px 14px rgba(0,0,0,.5)">'
@@ -37042,8 +37042,12 @@ body.theme-light #tab-weekplan{background:#f5f0e8;--wp-ink:#1b2333;--wp-dim:#5a6
   }
   function refresh(){
     var cli=clientStale();
+    // Één retry bij een transient fout (bv. korte DB-piek tijdens de refresh-burst) vóór de banner.
     rest('v_data_health?select=*').then(function(rows){ render(rows, cli); })
-      .catch(function(){ render(null, cli); });
+      .catch(function(){
+        rest('v_data_health?select=*').then(function(rows){ render(rows, cli); })
+          .catch(function(){ render(null, cli); });
+      });
   }
 
   function boot(){
