@@ -2706,7 +2706,7 @@ body.theme-light #v65-dock button.v65-refresh{background:#b08d57 !important;colo
       c.push({value: +f.raw, src: 'FRED DGS10', asOf: f.date || null, live: true});
     var db = mccFieldInfo('usd_10y'); if(db.value!=null) c.push(db);
     var live = c.filter(function(x){ return x.live; });
-    var pick = live[0] || c[0] || {value: 4.32, src: 'STATIC ref', asOf: null, live: false};
+    var pick = live[0] || c[0] || {value: 5.21, src: 'STATIC ref', asOf: null, live: false};
     var conflict = null;
     if(live.length >= 2){
       var vs = live.map(function(x){ return x.value; });
@@ -2890,6 +2890,7 @@ body.theme-light #v65-dock button.v65-refresh{background:#b08d57 !important;colo
       }catch(e){ document.getElementById('rh-score').textContent='regime laden mislukt ('+e.message+')'; }
     }
     load(); setInterval(load,900000);
+    window.mccRegimeReload = load;   // v66: ook herladen bij Refresh All (was alleen elke 15 min)
   })();
   </script>
 </section>
@@ -2938,6 +2939,7 @@ body.theme-light #v65-dock button.v65-refresh{background:#b08d57 !important;colo
       }catch(e){ document.getElementById('rl-grid').innerHTML='<span class="rl-div">relaties laden mislukt ('+esc(e.message)+')</span>'; }
     }
     load(); setInterval(load,900000);
+    window.mccRelationsReload = load;   // v66: ook herladen bij Refresh All
   })();
   </script>
 </section>
@@ -7091,6 +7093,8 @@ window.RiskOverlays = (function(){
     var started=false;
     var tab=document.getElementById('tab-house-view');
     function maybe(){ if(started)return; started=true; load(); setInterval(load,900000); }
+    // v66: Refresh All herlaadt de House View ook (een hangende/mislukte eerste load bleef anders 15 min staan)
+    window.mccHouseViewReload = function(){ started=true; return load(); };
     if(tab){ var obs=new MutationObserver(function(){ if(tab.classList.contains('active')) maybe(); });
       obs.observe(tab,{attributes:true,attributeFilter:['class','style']});
       if(tab.classList.contains('active')||tab.offsetParent!==null) maybe(); }
@@ -13106,44 +13110,44 @@ function _loadPersistedData(key, maxAgeMs=3600000) {
 const _DB_RULES = {
   // key: { min, max, ref, noZero }
   // noZero: reject exact 0 (means "no data returned", not a real value)
-  // ref: known-good April 2026 fallback
-  usd_policy:  {min:0.0,  max:9.0,  ref:4.50, noZero:true },
-  eur_policy:  {min:-0.5, max:6.0,  ref:2.50, noZero:true },
-  gbp_policy:  {min:0.0,  max:9.0,  ref:4.50, noZero:true },
-  jpy_policy:  {min:-0.5, max:3.0,  ref:0.50, noZero:false},  // BoJ near zero OK
-  aud_policy:  {min:0.5,  max:9.0,  ref:4.10, noZero:true },
-  cad_policy:  {min:0.0,  max:9.0,  ref:2.25, noZero:true },  // BoC Mar 2026: 2.25%
-  nzd_policy:  {min:0.5,  max:10.0, ref:3.50, noZero:true },
-  chf_policy:  {min:-1.0, max:2.0,  ref:0.00, noZero:false},  // SNB Mar 2026: 0.00% — valid zero
+  // ref: known-good fallback — ververst 14-10-2026 (gelijk aan REFERENCE_VALUES)
+  usd_policy:  {min:0.0,  max:9.0,  ref: 3.88, noZero:true },
+  eur_policy:  {min:-0.5, max:6.0,  ref: 2.50, noZero:true },
+  gbp_policy:  {min:0.0,  max:9.0,  ref: 3.75, noZero:true },
+  jpy_policy:  {min:-0.5, max:3.0,  ref: 1.25, noZero:false},  // BoJ near zero OK
+  aud_policy:  {min:0.5,  max:9.0,  ref: 4.60, noZero:true },
+  cad_policy:  {min:0.0,  max:9.0,  ref: 2.25, noZero:true },  // BoC Mar 2026: 2.25%
+  nzd_policy:  {min:0.5,  max:10.0, ref: 2.75, noZero:true },
+  chf_policy:  {min:-1.0, max:2.0,  ref: 0.00, noZero:false},  // SNB Mar 2026: 0.00% — valid zero
 
-  usd_cpi:     {min:-3.0, max:20.0, ref:2.6,  noZero:true },
-  eur_cpi:     {min:-3.0, max:15.0, ref:2.2,  noZero:true },
-  gbp_cpi:     {min:-3.0, max:15.0, ref:3.4,  noZero:true },
-  jpy_cpi:     {min:-3.0, max:15.0, ref:3.2,  noZero:true },
-  aud_cpi:     {min:-3.0, max:15.0, ref:2.4,  noZero:true },
-  cad_cpi:     {min:-3.0, max:15.0, ref:1.8,  noZero:true },  // Canada Feb 2026: 1.8%
-  nzd_cpi:     {min:-3.0, max:15.0, ref:3.1,  noZero:true },  // NZ Dec 2025: 3.1%
-  chf_cpi:     {min:-3.0, max:10.0, ref:0.3,  noZero:true },  // Swiss Mar 2026: 0.3% (was showing 0.0)
+  usd_cpi:     {min:-3.0, max:20.0, ref: 3.7,  noZero:true },
+  eur_cpi:     {min:-3.0, max:15.0, ref: 3.2,  noZero:true },
+  gbp_cpi:     {min:-3.0, max:15.0, ref: 3.1,  noZero:true },
+  jpy_cpi:     {min:-3.0, max:15.0, ref: 1.9,  noZero:true },
+  aud_cpi:     {min:-3.0, max:15.0, ref: 4.0,  noZero:true },
+  cad_cpi:     {min:-3.0, max:15.0, ref: 3.0,  noZero:true },  // Canada Feb 2026: 1.8%
+  nzd_cpi:     {min:-3.0, max:15.0, ref: 4.1,  noZero:true },  // NZ Dec 2025: 3.1%
+  chf_cpi:     {min:-3.0, max:10.0, ref: 1.0,  noZero:true },  // Swiss Mar 2026: 0.3% (was showing 0.0)
 
-  usd_2y:      {min:0.0,  max:9.0,  ref:3.82, noZero:true },
-  eur_2y:      {min:-0.5, max:7.0,  ref:2.00, noZero:true },
-  gbp_2y:      {min:0.0,  max:8.0,  ref:4.20, noZero:true },
-  jpy_2y:      {min:-0.5, max:4.0,  ref:1.30, noZero:false},
-  aud_2y:      {min:0.5,  max:8.0,  ref:3.80, noZero:true },
-  cad_2y:      {min:0.5,  max:5.0,  ref:2.80, noZero:true },  // tightened: 6.09% was passing — BoC 2.25% → realistic max ~4.5%
-  nzd_2y:      {min:0.5,  max:7.0,  ref:3.20, noZero:true },
-  chf_2y:      {min:-0.5, max:2.5,  ref:0.42, noZero:false},  // SNB at 0% — realistic max 2%
+  usd_2y:      {min:0.0,  max:9.0,  ref: 4.79, noZero:true },
+  eur_2y:      {min:-0.5, max:7.0,  ref: 3.08, noZero:true },
+  gbp_2y:      {min:0.0,  max:8.0,  ref: 4.88, noZero:true },
+  jpy_2y:      {min:-0.5, max:4.0,  ref: 1.93, noZero:false},
+  aud_2y:      {min:0.5,  max:8.0,  ref: 4.96, noZero:true },
+  cad_2y:      {min:0.5,  max:5.0,  ref: 3.19, noZero:true },  // tightened: 6.09% was passing — BoC 2.25% → realistic max ~4.5%
+  nzd_2y:      {min:0.5,  max:7.0,  ref: 3.86, noZero:true },
+  chf_2y:      {min:-0.5, max:2.5,  ref: 0.24, noZero:false},  // SNB at 0% — realistic max 2%
 
-  usd_10y:     {min:0.5,  max:9.0,  ref:4.32, noZero:true },
-  eur_10y:     {min:-0.5, max:7.0,  ref:2.80, noZero:true },
-  gbp_10y:     {min:0.5,  max:9.0,  ref:4.72, noZero:true },
-  jpy_10y:     {min:-0.5, max:4.0,  ref:1.55, noZero:false},
-  aud_10y:     {min:0.5,  max:9.0,  ref:4.62, noZero:true },
-  cad_10y:     {min:0.5,  max:8.0,  ref:3.22, noZero:true },
-  nzd_10y:     {min:0.5,  max:9.0,  ref:4.62, noZero:true },
-  chf_10y:     {min:-0.5, max:4.0,  ref:0.72, noZero:false},
+  usd_10y:     {min:0.5,  max:9.0,  ref: 5.21, noZero:true },
+  eur_10y:     {min:-0.5, max:7.0,  ref: 3.49, noZero:true },
+  gbp_10y:     {min:0.5,  max:9.0,  ref: 5.40, noZero:true },
+  jpy_10y:     {min:-0.5, max:4.0,  ref: 3.00, noZero:false},
+  aud_10y:     {min:0.5,  max:9.0,  ref: 5.32, noZero:true },
+  cad_10y:     {min:0.5,  max:8.0,  ref: 3.87, noZero:true },
+  nzd_10y:     {min:0.5,  max:9.0,  ref: 5.03, noZero:true },
+  chf_10y:     {min:-0.5, max:4.0,  ref: 0.56, noZero:false},
 
-  usd_3m:      {min:-0.5, max:6.5,  ref:4.30, noZero:true },  // 17.01% was passing — realistic max 6.5%
+  usd_3m:      {min:-0.5, max:6.5,  ref: 3.80, noZero:true },  // 17.01% was passing — realistic max 6.5%
   usd_5y:      {min:0.0,  max:9.0,  ref:4.05, noZero:true },
   usd_30y:     {min:0.5,  max:9.0,  ref:4.72, noZero:true },
 
@@ -13162,13 +13166,13 @@ const _DB_RULES = {
   cad_ppi:     {min:-15.0, max:30.0, ref:0.0,   noZero:false},
   chf_ppi:     {min:-15.0, max:25.0, ref:-0.5,  noZero:false},
   // v55: Unemployment (those not yet in rules)
-  eur_unemployment: {min:2.0, max:15.0, ref:6.1, noZero:true},
-  gbp_unemployment: {min:2.0, max:12.0, ref:4.7, noZero:true},
-  jpy_unemployment: {min:1.0, max:8.0,  ref:2.5, noZero:true},
-  aud_unemployment: {min:2.0, max:12.0, ref:4.1, noZero:true},
-  cad_unemployment: {min:3.0, max:15.0, ref:6.7, noZero:true},
-  nzd_unemployment: {min:2.0, max:12.0, ref:5.4, noZero:true},
-  chf_unemployment: {min:1.0, max:8.0,  ref:2.8, noZero:true},
+  eur_unemployment: {min:2.0, max:15.0, ref: 6.4, noZero:true},
+  gbp_unemployment: {min:2.0, max:12.0, ref: 4.9, noZero:true},
+  jpy_unemployment: {min:1.0, max:8.0,  ref: 2.5, noZero:true},
+  aud_unemployment: {min:2.0, max:12.0, ref: 4.6, noZero:true},
+  cad_unemployment: {min:3.0, max:15.0, ref: 6.4, noZero:true},
+  nzd_unemployment: {min:2.0, max:12.0, ref: 5.6, noZero:true},
+  chf_unemployment: {min:1.0, max:8.0,  ref: 3.0, noZero:true},
 };
 
 function _sanitizeDbYields(source) {
@@ -13436,8 +13440,10 @@ function _checkRefStaleness() {
     for (const [ccy, ref] of Object.entries(entries)) {
       if (!ref?.as_of || ref.value == null) continue;
       const ageDays = Math.floor((now - new Date(ref.as_of).getTime()) / 86400000);
-      if (ageDays > maxAge) {
-        stale.push({field, ccy, ageDays, maxAge, value: ref.value, discontinued: ageDays > 300});
+      // v66: per-entry max_age voor reeksen die per definitie later verschijnen (kwartaal / 3m-gem.)
+      const lim = ref.max_age || maxAge;
+      if (ageDays > lim) {
+        stale.push({field, ccy, ageDays, maxAge: lim, value: ref.value, discontinued: ageDays > 300});
       }
     }
   }
@@ -13642,8 +13648,8 @@ let prevDbYields = _loadPersistedData("prevDbYields", 7200000) || null;  // v21:
 (function _initStaticYieldFill() {
   try {
     if (!cachedDbYields) cachedDbYields = {};
-    const STATIC_2Y  = {usd:3.82,eur:2.00,gbp:4.20,jpy:1.30,aud:3.80,cad:2.80,nzd:3.20,chf:0.42};
-    const STATIC_10Y = {usd:4.32,eur:2.80,gbp:4.72,jpy:1.55,aud:4.62,cad:3.22,nzd:4.62,chf:0.72};
+    const STATIC_2Y  = {usd:4.79,eur:3.08,gbp:4.88,jpy:1.93,aud:4.96,cad:3.19,nzd:3.86,chf:0.24};
+    const STATIC_10Y = {usd:5.21,eur:3.49,gbp:5.40,jpy:3.00,aud:5.32,cad:3.87,nzd:5.03,chf:0.56};
     const RANGE_2Y = [-0.5, 7], RANGE_10Y = [-0.5, 8];
     let injected = 0;
     for (const [cur, sv] of Object.entries(STATIC_2Y)) {
@@ -22503,8 +22509,8 @@ function _validateYields() {
   const ranges = { _2y:[-0.5,7], _10y:[-0.5,8], _policy:[-2,22], _3m:[-3,22], _cpi:[-5,30] };
 
   // v28: Static April 2026 government bond yield fallbacks — last resort guarantee
-  const STATIC_2Y  = {usd:3.82,eur:2.00,gbp:4.20,jpy:1.30,aud:3.80,cad:2.80,nzd:3.20,chf:0.42};
-  const STATIC_10Y = {usd:4.32,eur:2.80,gbp:4.72,jpy:1.55,aud:4.62,cad:3.22,nzd:4.62,chf:0.72};
+  const STATIC_2Y  = {usd:4.79,eur:3.08,gbp:4.88,jpy:1.93,aud:4.96,cad:3.19,nzd:3.86,chf:0.24};
+  const STATIC_10Y = {usd:5.21,eur:3.49,gbp:5.40,jpy:3.00,aud:5.32,cad:3.87,nzd:5.03,chf:0.56};
 
   let removed = 0, present = 0, filled = 0, missing = [];
 
@@ -22605,126 +22611,132 @@ function _validateYields() {
 // ══════════════════════════════════════════════════════════════════
 
 const REFERENCE_VALUES = {
-  // ─── POLICY RATES ─── verified 2026-04-16
+  // v66 (14-10-2026): volledig ververst uit de MCC-database (macro_scraped: FRED / ECB / BoC /
+  // yields_live_sync / TradingEconomics-scrape) + officiele bronnen voor de gaten (Eurostat, ONS,
+  // ABS, SECO). as_of = einde van de referentieperiode waar bekend; anders de verificatiedatum
+  // 2026-10-14 ("geverifieerd"). max_age (dagen) alleen bij reeksen die per definitie later
+  // verschijnen dan de veld-drempel (_REF_MAX_AGE); reden staat in de bron.
+  // ─── POLICY RATES ─── verified 2026-10-14
   policy: {
-    USD: { value: 3.63, as_of: "2026-03-19", source: "Fed FOMC mid-target 3.50-3.75%" },
-    EUR: { value: 2.00, as_of: "2026-03-19", source: "ECB deposit facility rate" },
-    GBP: { value: 4.25, as_of: "2026-05-06", source: "BoE Bank Rate (cut May 2026 to 4.25%)" },
-    JPY: { value: 0.75, as_of: "2026-03-19", source: "BoJ policy rate" },
-    AUD: { value: 3.35, as_of: "2026-04-01", source: "RBA cash rate" },
-    CAD: { value: 2.25, as_of: "2026-03-18", source: "BoC overnight rate" },
-    NZD: { value: 2.25, as_of: "2026-02-18", source: "RBNZ OCR" },
-    CHF: { value: 0.00, as_of: "2026-03-19", source: "SNB policy rate" }
+    USD: { value: 3.88, as_of: "2026-10-11", source: "Fed funds target 3.75-4.00% (FRED DFEDTARU 4.00), mid" },
+    EUR: { value: 2.50, as_of: "2026-10-12", source: "ECB deposit facility rate (ECB FM.D.U2.EUR.4F.KR.DFR.LEV)" },
+    GBP: { value: 3.75, as_of: "2026-10-14", source: "BoE Bank Rate (geverifieerd via MCC-DB/TE)" },
+    JPY: { value: 1.25, as_of: "2026-10-14", source: "BoJ policy rate (geverifieerd via MCC-DB/TE)" },
+    AUD: { value: 4.60, as_of: "2026-10-14", source: "RBA cash rate (geverifieerd via MCC-DB/TE)" },
+    CAD: { value: 2.25, as_of: "2026-10-14", source: "BoC overnight rate (geverifieerd via MCC-DB/TE)" },
+    NZD: { value: 2.75, as_of: "2026-10-14", source: "RBNZ OCR (geverifieerd via MCC-DB/TE)" },
+    CHF: { value: 0.00, as_of: "2026-10-14", source: "SNB policy rate (geverifieerd via MCC-DB/TE)" }
   },
-  // ─── 2-YEAR YIELDS ─── verified 2026-05-06 (approx daily levels)
+  // ─── 2-YEAR YIELDS ─── 2026-10-14 (yields_live_sync; USD = FRED DGS2 13-10)
   "2y": {
-    USD: { value: 3.80, as_of: "2026-05-06", source: "FRED DGS2 approx" },
-    EUR: { value: 1.85, as_of: "2026-05-06", source: "German 2Y Schatz" },
-    GBP: { value: 4.00, as_of: "2026-05-06", source: "UK 2Y gilt" },
-    JPY: { value: 0.80, as_of: "2026-05-06", source: "Japan 2Y JGB" },
-    AUD: { value: 3.30, as_of: "2026-05-06", source: "AU 2Y" },
-    CAD: { value: 2.65, as_of: "2026-05-06", source: "Canada 2Y" },
-    NZD: { value: 3.15, as_of: "2026-05-06", source: "NZ 2Y" },
-    CHF: { value: 0.25, as_of: "2026-05-06", source: "Swiss 2Y" }
+    USD: { value: 4.79, as_of: "2026-10-13", source: "FRED DGS2" },
+    EUR: { value: 3.08, as_of: "2026-10-13", source: "ECB yield curve 2Y" },
+    GBP: { value: 4.88, as_of: "2026-10-14", source: "UK 2Y gilt (CNBC via yields_live_sync)" },
+    JPY: { value: 1.93, as_of: "2026-10-14", source: "Japan 2Y JGB (CNBC via yields_live_sync)" },
+    AUD: { value: 4.96, as_of: "2026-10-14", source: "AU 2Y (CNBC via yields_live_sync)" },
+    CAD: { value: 3.19, as_of: "2026-10-13", source: "BoC 2Y benchmark" },
+    NZD: { value: 3.86, as_of: "2026-10-14", source: "RBNZ B2 2Y" },
+    CHF: { value: 0.24, as_of: "2026-10-14", source: "Swiss 2Y (CNBC via yields_live_sync)" }
   },
-  // ─── 10-YEAR YIELDS ─── verified 2026-05-06
+  // ─── 10-YEAR YIELDS ─── 2026-10-14
   "10y": {
-    USD: { value: 4.35, as_of: "2026-05-06", source: "FRED DGS10 approx" },
-    EUR: { value: 2.65, as_of: "2026-05-06", source: "German 10Y Bund" },
-    GBP: { value: 4.65, as_of: "2026-05-06", source: "UK 10Y gilt" },
-    JPY: { value: 1.55, as_of: "2026-05-06", source: "Japan 10Y JGB" },
-    AUD: { value: 4.40, as_of: "2026-05-06", source: "AU 10Y" },
-    CAD: { value: 3.35, as_of: "2026-05-06", source: "Canada 10Y" },
-    NZD: { value: 4.55, as_of: "2026-05-06", source: "NZ 10Y" },
-    CHF: { value: 0.75, as_of: "2026-05-06", source: "Swiss 10Y" }
+    USD: { value: 5.21, as_of: "2026-10-13", source: "FRED DGS10 (= DFII10 2.91 + T10YIE 2.33)" },
+    EUR: { value: 3.49, as_of: "2026-10-13", source: "ECB yield curve 10Y" },
+    GBP: { value: 5.40, as_of: "2026-10-14", source: "UK 10Y gilt (CNBC via yields_live_sync)" },
+    JPY: { value: 3.00, as_of: "2026-10-14", source: "Japan 10Y JGB (CNBC via yields_live_sync)" },
+    AUD: { value: 5.32, as_of: "2026-10-14", source: "AU 10Y (CNBC via yields_live_sync)" },
+    CAD: { value: 3.87, as_of: "2026-10-13", source: "BoC 10Y benchmark" },
+    NZD: { value: 5.03, as_of: "2026-10-14", source: "NZ 10Y (CNBC via yields_live_sync)" },
+    CHF: { value: 0.56, as_of: "2026-10-14", source: "Swiss 10Y (CNBC via yields_live_sync)" }
   },
-  // ─── 3M INTERBANK ─── verified 2026-05-06
+  // ─── 3M RATES ─── 2026-10-14 (yield_differential_writer)
   "3m": {
-    USD: { value: 4.30, as_of: "2026-05-06", source: "SOFR 3M proxy" },
-    EUR: { value: 2.10, as_of: "2026-05-06", source: "ESTR 3M" },
-    GBP: { value: 4.40, as_of: "2026-05-06", source: "SONIA 3M" },
-    JPY: { value: 0.75, as_of: "2026-05-06", source: "TONAR 3M" },
-    AUD: { value: 3.90, as_of: "2026-05-06", source: "BBSW 3M" },
-    CAD: { value: 2.65, as_of: "2026-05-06", source: "CORRA 3M" },
-    NZD: { value: 3.25, as_of: "2026-05-06", source: "NZ 3M" },
-    CHF: { value: 0.05, as_of: "2026-05-06", source: "SARON 3M" }
+    USD: { value: 3.80, as_of: "2026-10-14", source: "US 3M (yields_live_sync)" },
+    EUR: { value: 2.19, as_of: "2026-10-14", source: "EUR 3M (yields_live_sync)" },
+    GBP: { value: 3.90, as_of: "2026-10-14", source: "GBP 3M (yields_live_sync)" },
+    JPY: { value: 1.09, as_of: "2026-10-14", source: "JPY 3M (yields_live_sync)" },
+    AUD: { value: 4.46, as_of: "2026-10-14", source: "AUD 3M (yields_live_sync)" },
+    CAD: { value: 2.28, as_of: "2026-10-14", source: "CAD 3M (yields_live_sync)" },
+    NZD: { value: 3.02, as_of: "2026-10-14", source: "NZD 3M (yields_live_sync)" },
+    CHF: { value: -0.06, as_of: "2026-10-14", source: "CHF 3M (yields_live_sync)" }
   },
-  // ─── HEADLINE CPI YoY ─── verified 2026-04-21 (BLS release Apr 10)
+  // ─── HEADLINE CPI YoY ───
   cpi: {
-    USD: { value: 3.3, as_of: "2026-03-31", source: "BLS CPI-U Mar 2026 (energy surge +10.9%)" },
-    EUR: { value: 2.5, as_of: "2026-03-31", source: "Eurostat HICP Mar 2026" },
-    GBP: { value: 3.0, as_of: "2026-02-28", source: "UK ONS CPI Feb 2026" },
-    JPY: { value: 3.5, as_of: "2026-02-28", source: "Japan CPI Feb 2026" },
-    AUD: { value: 3.0, as_of: "2026-03-31", source: "AU CPI Q1 2026" },
-    CAD: { value: 1.8, as_of: "2026-02-28", source: "Canada CPI Feb 2026 (BoC reference)" },
-    NZD: { value: 2.5, as_of: "2025-12-31", source: "NZ CPI Q4 2025" },
-    CHF: { value: 0.3, as_of: "2026-03-31", source: "Swiss CPI Mar 2026" }
+    USD: { value: 3.7, as_of: "2026-08-31", source: "BLS CPI-U Aug 2026 (FRED CPIAUCSL)" },
+    EUR: { value: 3.2, as_of: "2026-08-31", source: "Eurostat HICP Aug 2026 (FRED CP0000EZ19M086NEST)" },
+    GBP: { value: 3.1, as_of: "2026-10-14", source: "ONS CPI laatste print (geverifieerd via MCC-DB/TE)" },
+    JPY: { value: 1.9, as_of: "2026-10-14", source: "Japan CPI laatste print (geverifieerd via MCC-DB/TE)" },
+    AUD: { value: 4.0, as_of: "2026-10-14", source: "ABS CPI laatste print (geverifieerd via MCC-DB/TE)" },
+    CAD: { value: 3.0, as_of: "2026-10-14", source: "StatCan CPI laatste print (geverifieerd via MCC-DB/TE)" },
+    NZD: { value: 4.1, as_of: "2026-10-14", source: "StatsNZ CPI laatste print (geverifieerd via MCC-DB/TE)" },
+    CHF: { value: 1.0, as_of: "2026-10-14", source: "Swiss CPI laatste print (geverifieerd via MCC-DB/TE)" }
   },
-  // ─── CPI MoM (headline) ─── verified 2026-04-21
+  // ─── CPI MoM (headline) ─── alleen USD heeft een echte bron; de oude 'derived' schattingen
+  //     (maart 2026) zijn verwijderd i.p.v. als referentie te blijven hangen.
   cpi_mom: {
-    USD: { value: 0.9,  as_of: "2026-03-31", source: "BLS CPI-U MoM Mar 2026 SA (gasoline +21.2%)" },
-    EUR: { value: 0.20, as_of: "2026-03-31", source: "derived" },
-    GBP: { value: 0.25, as_of: "2026-02-28", source: "derived" },
-    JPY: { value: 0.20, as_of: "2026-02-28", source: "derived" },
-    AUD: { value: 0.75, as_of: "2026-03-31", source: "derived QoQ/3" },
-    CAD: { value: 0.15, as_of: "2026-02-28", source: "derived" },
-    NZD: { value: 0.20, as_of: "2025-12-31", source: "derived QoQ/3" },
-    CHF: { value: 0.03, as_of: "2026-03-31", source: "derived" }
+    USD: { value: 0.40, as_of: "2026-08-31", source: "BLS CPI-U MoM Aug 2026 SA (FRED CPIAUCSL)" },
+    EUR: { value: null, as_of: null, source: "geen bron (was afgeleide schatting)" },
+    GBP: { value: null, as_of: null, source: "geen bron (was afgeleide schatting)" },
+    JPY: { value: null, as_of: null, source: "geen bron (was afgeleide schatting)" },
+    AUD: { value: null, as_of: null, source: "geen bron (was afgeleide schatting)" },
+    CAD: { value: null, as_of: null, source: "geen bron (was afgeleide schatting)" },
+    NZD: { value: null, as_of: null, source: "geen bron (was afgeleide schatting)" },
+    CHF: { value: null, as_of: null, source: "geen bron (was afgeleide schatting)" }
   },
-  // ─── CORE CPI YoY ─── verified 2026-04-21 (BLS: "all items less food and energy")
+  // ─── CORE CPI YoY ───
   core_cpi: {
-    USD: { value: 2.6,  as_of: "2026-03-31", source: "BLS Core CPI ex F&E Mar 2026 (+0.2% MoM)" },
-    EUR: { value: 2.3,  as_of: "2026-03-31", source: "Eurostat core HICP" },
-    GBP: { value: 3.4,  as_of: "2026-02-28", source: "ONS core CPI" },
-    JPY: { value: 1.9,  as_of: "2026-02-28", source: "Japan core CPI" },
-    AUD: { value: 2.8,  as_of: "2026-03-31", source: "AU trimmed mean Q1" },
-    CAD: { value: 2.1,  as_of: "2026-02-28", source: "BoC core-CPI common" },
-    NZD: { value: null, as_of: null,         source: "not available" },
-    CHF: { value: 0.7,  as_of: "2026-03-31", source: "Swiss core CPI" }
+    USD: { value: 2.8, as_of: "2026-08-31", source: "BLS Core CPI ex F&E Aug 2026 (FRED CPILFESL)" },
+    EUR: { value: 2.5, as_of: "2026-10-14", source: "Eurostat core HICP laatste print (geverifieerd via MCC-DB/TE)" },
+    GBP: { value: 2.6, as_of: "2026-10-14", source: "ONS core CPI laatste print (geverifieerd via MCC-DB/TE)" },
+    JPY: { value: 1.7, as_of: "2026-10-14", source: "Japan core CPI laatste print (geverifieerd via MCC-DB/TE)" },
+    AUD: { value: 3.6, as_of: "2026-10-14", source: "AU trimmed mean laatste print (geverifieerd via MCC-DB/TE)" },
+    CAD: { value: 2.4, as_of: "2026-10-14", source: "BoC core CPI laatste print (geverifieerd via MCC-DB/TE)" },
+    NZD: { value: 3.2, as_of: "2026-10-14", source: "NZ core CPI laatste print (geverifieerd via MCC-DB/TE)" },
+    CHF: { value: 0.5, as_of: "2026-10-14", source: "Swiss core CPI laatste print (geverifieerd via MCC-DB/TE)" }
   },
-  // ─── UNEMPLOYMENT RATE ─── verified 2026-04-16
+  // ─── UNEMPLOYMENT RATE ───
   unemployment: {
-    USD: { value: 4.3, as_of: "2026-03-31", source: "BLS U-3 Mar 2026" },
-    EUR: { value: 6.1, as_of: "2026-02-28", source: "Eurostat harmonized Feb 2026" },
-    GBP: { value: 4.7, as_of: "2026-02-28", source: "ONS 3m avg to Feb" },
-    JPY: { value: 2.5, as_of: "2026-02-28", source: "Japan labor force survey" },
-    AUD: { value: 4.1, as_of: "2026-02-28", source: "ABS labour force Feb" },
-    CAD: { value: 6.7, as_of: "2026-02-28", source: "StatCan Feb 2026 (rose from 6.6)" },
-    NZD: { value: 5.4, as_of: "2025-12-31", source: "StatsNZ Q4 2025" },
-    CHF: { value: 2.8, as_of: "2026-02-28", source: "SECO Feb 2026" }
+    USD: { value: 4.2, as_of: "2026-09-30", source: "BLS U-3 Sep 2026 (FRED UNRATE)" },
+    EUR: { value: 6.4, as_of: "2026-08-31", source: "Eurostat euro area Aug 2026 (persbericht 1-10)" },
+    GBP: { value: 4.9, as_of: "2026-07-31", max_age: 85, source: "ONS 3m avg May-Jul 2026 (3-maandsgemiddelde verschijnt ~7 weken na periode; volgende release 20-10)" },
+    JPY: { value: 2.5, as_of: "2026-10-14", source: "Japan labour force survey laatste print (geverifieerd via MCC-DB/TE)" },
+    AUD: { value: 4.6, as_of: "2026-08-31", source: "ABS labour force Aug 2026 (sept-cijfer 15-10)" },
+    CAD: { value: 6.4, as_of: "2026-08-31", source: "StatCan Aug 2026 (FRED LRUNTTTTCAM156S)" },
+    NZD: { value: 5.6, as_of: "2026-06-30", max_age: 140, source: "StatsNZ HLFS Q2 2026 (kwartaalcijfer; Q3 begin nov)" },
+    CHF: { value: 3.0, as_of: "2026-10-14", source: "Swiss unemployment laatste print (geverifieerd via MCC-DB/TE)" }
   },
-  // ─── GDP QoQ ─── verified 2026-04-16 (latest quarterly print)
+  // ─── GDP QoQ ─── (USD annualized, rest niet-geannualiseerd)
   gdp_qoq: {
-    USD: { value: 2.4, as_of: "2025-12-31", source: "US GDP Q4 2025 annualized" },
-    EUR: { value: 0.4, as_of: "2025-12-31", source: "Eurostat Q4 2025 (Germany proxy)" },
-    GBP: { value: 0.2, as_of: "2025-12-31", source: "UK ONS Q4 2025" },
-    JPY: { value: 0.3, as_of: "2025-12-31", source: "Japan Cabinet Office Q4 2025" },
-    AUD: { value: 0.4, as_of: "2025-12-31", source: "ABS Q4 2025" },
-    CAD: { value: -0.6, as_of: "2025-12-31", source: "StatCan Q4 2025 (contraction)" },
-    NZD: { value: 0.3, as_of: "2025-12-31", source: "StatsNZ Q4 2025" },
-    CHF: { value: 0.5, as_of: "2025-12-31", source: "SECO Q4 2025" }
+    USD: { value: 2.2, as_of: "2026-06-30", source: "BEA Q2 2026 real GDP annualized (FRED A191RL1Q225SBEA)" },
+    EUR: { value: 0.6, as_of: "2026-06-30", source: "Eurostat Q2 2026 (FRED CLVMEURSCAB1GQEA19)" },
+    GBP: { value: 0.5, as_of: "2026-10-14", source: "ONS GDP q/q laatste print (geverifieerd via MCC-DB/TE)" },
+    JPY: { value: 0.4, as_of: "2026-06-30", source: "Cabinet Office Q2 2026 (FRED JPNRGDPEXP, 0.36)" },
+    AUD: { value: 0.4, as_of: "2026-10-14", source: "ABS GDP q/q laatste print (geverifieerd via MCC-DB/TE)" },
+    CAD: { value: 0.8, as_of: "2026-10-14", source: "StatCan GDP q/q laatste print (geverifieerd via MCC-DB/TE)" },
+    NZD: { value: 0.2, as_of: "2026-10-14", source: "StatsNZ GDP q/q laatste print (geverifieerd via MCC-DB/TE)" },
+    CHF: { value: 1.5, as_of: "2026-06-30", source: "SECO Q2 2026, sport-gecorrigeerd (persbericht 3-9)" }
   },
-  // ─── INDUSTRIAL PRODUCTION YoY ─── verified 2026-04-16
+  // ─── INDUSTRIAL PRODUCTION YoY ───
   ip: {
-    USD: { value: 1.2,  as_of: "2026-02-28", source: "Fed G.17 Feb 2026" },
-    EUR: { value: 0.5,  as_of: "2026-02-28", source: "Eurostat IP Feb (DE proxy)" },
-    GBP: { value: -0.2, as_of: "2026-02-28", source: "ONS IoP Feb" },
-    JPY: { value: -1.8, as_of: "2026-02-28", source: "METI IIP Feb" },
-    AUD: { value: null, as_of: null,         source: "not available" },
-    CAD: { value: 0.3,  as_of: "2026-02-28", source: "StatCan IP Feb" },
-    NZD: { value: null, as_of: null,         source: "not available" },
-    CHF: { value: 1.5,  as_of: "2026-02-28", source: "Swiss BFS IP Feb" }
+    USD: { value: 1.4, as_of: "2026-08-31", source: "Fed G.17 Aug 2026 (FRED INDPRO)" },
+    EUR: { value: 0.0, as_of: "2026-10-14", source: "Eurostat IP laatste print (geverifieerd via MCC-DB/TE)" },
+    GBP: { value: 0.6, as_of: "2026-10-14", source: "ONS IoP laatste print (geverifieerd via MCC-DB/TE)" },
+    JPY: { value: 3.4, as_of: "2026-10-14", source: "METI IIP laatste print (geverifieerd via MCC-DB/TE)" },
+    AUD: { value: null, as_of: null, source: "not available" },
+    CAD: { value: 1.7, as_of: "2026-10-14", source: "StatCan IP laatste print (geverifieerd via MCC-DB/TE)" },
+    NZD: { value: null, as_of: null, source: "not available" },
+    CHF: { value: 5.5, as_of: "2026-10-14", source: "Swiss BFS IP laatste print (geverifieerd via MCC-DB/TE)" }
   },
-  // ─── PMI (Composite) ─── verified 2026-04-21 (March 2026 final releases)
+  // ─── PMI ─── composite waar beschikbaar; anders manufacturing (staat in de bron)
   pmi: {
-    USD: { value: 50.2, as_of: "2026-03-31", source: "S&P Global US Composite Mar 2026" },
-    EUR: { value: 50.7, as_of: "2026-03-31", source: "S&P Global EZ Composite Mar 2026 (revised up from 50.5 flash)" },
-    GBP: { value: 50.5, as_of: "2026-03-31", source: "S&P Global UK Composite Mar 2026" },
-    JPY: { value: 49.8, as_of: "2026-03-31", source: "au Jibun Bank Composite Mar 2026" },
-    AUD: { value: 50.5, as_of: "2026-03-31", source: "Judo Bank AU Composite Mar 2026" },
-    CAD: { value: 48.2, as_of: "2026-03-31", source: "S&P Global CA Mar 2026" },
-    NZD: { value: 49.0, as_of: "2026-02-28", source: "BusinessNZ PMI Feb 2026" },
-    CHF: { value: 48.6, as_of: "2026-03-31", source: "Procure.ch PMI Mar 2026" }
+    USD: { value: 55.9, as_of: "2026-10-14", source: "US MANUFACTURING PMI (geen composite in DB; geverifieerd via MCC-DB/TE)" },
+    EUR: { value: 53.1, as_of: "2026-10-14", source: "HCOB EZ Composite (geverifieerd via MCC-DB/TE)" },
+    GBP: { value: 52.0, as_of: "2026-10-14", source: "S&P Global UK Composite (geverifieerd via MCC-DB/TE)" },
+    JPY: { value: 54.1, as_of: "2026-10-14", source: "JP MANUFACTURING PMI (geen composite in DB; geverifieerd via MCC-DB/TE)" },
+    AUD: { value: 51.3, as_of: "2026-10-14", source: "AU Composite (geverifieerd via MCC-DB/TE)" },
+    CAD: { value: 51.5, as_of: "2026-10-14", source: "CA MANUFACTURING PMI (geen composite in DB; geverifieerd via MCC-DB/TE)" },
+    NZD: { value: 53.1, as_of: "2026-10-14", source: "BusinessNZ MANUFACTURING PMI (geverifieerd via MCC-DB/TE)" },
+    CHF: { value: 55.3, as_of: "2026-10-14", source: "procure.ch MANUFACTURING PMI (geverifieerd via MCC-DB/TE)" }
   },
   // ─── CB STANCE (editorial, not numeric) ─── verified 2026-04-16
   stance: {
@@ -23441,7 +23453,12 @@ function renderStaleBadge(fred) {
   const ts = document.getElementById("dhTimestamp");
   if (ts) {
     const existing = ts.innerHTML;
-    ts.innerHTML = existing + ` <span style="background:rgba(251,191,36,.1);color:#fbbf24;font-size:9px;padding:2px 8px;border-radius:3px;border:1px solid rgba(251,191,36,.2);font-weight:600">⚠ ${stale.length} STALE</span>`;
+    // v66: welke reeksen + hoe oud de cache is (was alleen een getal -> niet te diagnosticeren)
+    const _ages = [...new Set(stale)].map(id => {
+      try { const c = JSON.parse(localStorage.getItem("fred-cache-"+id) || "null");
+            return id + (c && c.ts ? " (" + Math.round((Date.now()-c.ts)/3600000) + "u oud)" : ""); } catch(_) { return id; }
+    }).join(", ");
+    ts.innerHTML = existing + ` <span title="FRED live-fetch mislukt, cache getoond: ${_ages}" style="cursor:help;background:rgba(251,191,36,.1);color:#fbbf24;font-size:9px;padding:2px 8px;border-radius:3px;border:1px solid rgba(251,191,36,.2);font-weight:600">⚠ ${new Set(stale).size} STALE (FRED-cache)</span>`;
   }
 }
 
@@ -23458,12 +23475,12 @@ const _dhVcacheMap = {
 // ── FRED series validation limits (min, max, noZero, ref) ──
 // If raw FRED value fails these checks, _dhV falls back to cachedDbYields
 const _FRED_LIMITS = {
-  DGS3MO:  {min:-0.5, max:9.0,  ref:4.30, noZero:true },
-  DGS2:    {min:0.0,  max:9.0,  ref:3.82, noZero:true },
+  DGS3MO:  {min:-0.5, max:9.0,  ref:3.80, noZero:true },
+  DGS2:    {min:0.0,  max:9.0,  ref:4.79, noZero:true },
   DGS5:    {min:0.0,  max:9.0,  ref:4.05, noZero:true },
-  DGS10:   {min:0.5,  max:9.0,  ref:4.32, noZero:true },
+  DGS10:   {min:0.5,  max:9.0,  ref:5.21, noZero:true },
   DGS30:   {min:0.5,  max:9.5,  ref:4.72, noZero:true },
-  FEDFUNDS:{min:0.0,  max:9.0,  ref:4.50, noZero:true },
+  FEDFUNDS:{min:0.0,  max:9.0,  ref:3.88, noZero:true },
   T10Y2Y:  {min:-5.0, max:5.0,  ref:-0.50,noZero:false},
   T10Y3M:  {min:-5.0, max:5.0,  ref:-0.10,noZero:false},
   DFII10:  {min:-3.0, max:7.0,  ref:1.80, noZero:false},  // 10Y TIPS
@@ -24584,7 +24601,7 @@ function dhRenderG8(fred) {
     // Layer 4: g8macro window cache
     if (y2Raw == null) { const wg8 = window._g8macroData?.g8?.[c.code]; if (wg8?.y2 != null && wg8.y2 !== 0) y2Raw = wg8.y2; }
     // Layer 5: Static April 2026 fallback (already injected into dy by _validateYields, but double-safe here)
-    const _STATIC_2Y = {USD:3.82,EUR:2.00,GBP:4.20,JPY:1.30,AUD:3.80,CAD:2.80,NZD:3.20,CHF:0.42};
+    const _STATIC_2Y = {USD:4.79,EUR:3.08,GBP:4.88,JPY:1.93,AUD:4.96,CAD:3.19,NZD:3.86,CHF:0.24};
     const _y2IsEst = y2Raw == null || dy[_lc+"_2y_static"] === true;
     if (y2Raw == null) y2Raw = _STATIC_2Y[c.code] ?? null;
     const y2 = y2Raw != null ? y2Raw.toFixed(2)+"%"+(_y2IsEst?`<span style="font-size:8px;color:#2d4060;margin-left:2px">~</span>`:"") : "—";
@@ -24594,7 +24611,7 @@ function dhRenderG8(fred) {
     if (y10Raw == null && ex[c.code]?.yield10y != null) { const v = parseFloat(ex[c.code].yield10y); if (!isNaN(v) && v !== 0) y10Raw = v < 0.1 ? v*100 : v; }
     if (y10Raw == null && mc[c.code]) { const d10y = mc[c.code].find(d=>d.indicator==="10Y Yield"); if (d10y?.values?.[0]?.value != null && d10y.values[0].value !== 0) y10Raw = d10y.values[0].value; }
     if (y10Raw == null) { const wg8 = window._g8macroData?.g8?.[c.code]; if (wg8?.y10 != null && wg8.y10 !== 0) y10Raw = wg8.y10; }
-    const _STATIC_10Y = {USD:4.32,EUR:2.80,GBP:4.72,JPY:1.55,AUD:4.62,CAD:3.22,NZD:4.62,CHF:0.72};
+    const _STATIC_10Y = {USD:5.21,EUR:3.49,GBP:5.40,JPY:3.00,AUD:5.32,CAD:3.87,NZD:5.03,CHF:0.56};
     const _y10IsEst = y10Raw == null || dy[_lc+"_10y_static"] === true;
     if (y10Raw == null) y10Raw = _STATIC_10Y[c.code] ?? null;
     const y10 = y10Raw != null ? y10Raw.toFixed(2)+"%"+(_y10IsEst?`<span style="font-size:8px;color:#2d4060;margin-left:2px">~</span>`:"") : "—";
@@ -25033,8 +25050,8 @@ function dhRenderG8YieldCurves(fred) {
     const i10    = (code==="USD" && typeof mccUS10Y==="function") ? mccUS10Y(fred) : (typeof mccFieldInfo==="function" ? mccFieldInfo(lc+"_10y") : null);
     const y10    = (code==="USD" && i10 && i10.value!=null) ? i10.value : (_v(lc,"10y",exC.yield10y,code) ?? ST10Y[code]);
     const i2     = (typeof mccFieldInfo==="function") ? mccFieldInfo(lc+"_2y") : null;
-    if (i2 && i2.value==null) { i2.src = "REF " + (REFERENCE_VALUES?.as_of || ""); i2.live = false; }
-    if (i10 && i10.value==null) { i10.src = "REF " + (REFERENCE_VALUES?.as_of || ""); i10.live = false; }
+    if (i2 && i2.value==null) { i2.src = "REF " + (REFERENCE_VALUES?.["2y"]?.[code]?.as_of || ""); i2.live = false; }
+    if (i10 && i10.value==null) { i10.src = "REF " + (REFERENCE_VALUES?.["10y"]?.[code]?.as_of || ""); i10.live = false; }
     const policy = _v(lc,"policy",null,code)       ?? STPOL[code];
     const cpi    = dy[lc+"_cpi"] != null ? parseFloat(dy[lc+"_cpi"]) : STCPI[code];
     // v66: live = 2Y EN 10Y zijn echte waarnemingen (was: alleen 2Y bekeken)
@@ -32249,6 +32266,11 @@ try {
     { key: "cot",      label: "COT",         fn: () => (typeof cpFetchCOT === "function" ? cpFetchCOT({fresh: true}) : Promise.resolve()) },
     { key: "sparks",   label: "Sparklines",  fn: () => (typeof cpFetchSparklines === "function" ? cpFetchSparklines({force: true}) : Promise.resolve()) },
     { key: "dhub",     label: "Data Hub",    fn: () => (typeof window.refreshDataHub === "function" ? window.refreshDataHub() : Promise.resolve()) },
+    // v66: regime / relaties / house view (Supabase-RPC's + tabellen) horen bij Refresh All
+    { key: "macro",    label: "Regime · Relaties · House View", fn: () => Promise.all([
+        typeof window.mccRegimeReload === "function" ? window.mccRegimeReload() : null,
+        typeof window.mccRelationsReload === "function" ? window.mccRelationsReload() : null,
+        typeof window.mccHouseViewReload === "function" ? window.mccHouseViewReload() : null ]) },
   ];
 
   async function cpRefreshAll(){
@@ -32273,10 +32295,17 @@ try {
 
     // Run all in parallel, update each as it completes
     const startTs = Date.now();
+    // v66: elke taak een plafond — één hangend verzoek (bv. bevroren Supabase, of 44 sequentiele
+    // FRED-calls in de Data Hub) hield de overlay eerder eindeloos op "Refreshing all data".
+    const _TASK_CAP_MS = { dhub: 150000 };
+    const _capped = (t) => Promise.race([
+      Promise.resolve().then(() => t.fn()),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("time-out na " + Math.round((_TASK_CAP_MS[t.key] || 60000)/1000) + "s")), _TASK_CAP_MS[t.key] || 60000))
+    ]);
     const promises = REFRESH_TASKS.map(t => {
       taskStates[t.key].status = "running";
       updateRefreshProgress(taskStates);
-      return t.fn()
+      return _capped(t)
         .then(() => {
           taskStates[t.key].status = "done";
           taskStates[t.key].ms = Date.now() - startTs;
