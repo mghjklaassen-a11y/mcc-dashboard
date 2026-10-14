@@ -2655,6 +2655,77 @@ body.theme-light #v65-dock th,body.theme-light #v65-dock td{border-bottom-color:
 body.theme-light #v65-dock td{color:#1a2330 !important}
 body.theme-light #v65-dock button.v65-refresh{background:#b08d57 !important;color:#ffffff !important}
 </style>
+<script>
+/* -- v66 (okt-2026): robuustheid bij Supabase-uitval + bron/versheid per veld --
+   De Supabase-DB bevriest dagelijks enkele uren (504/522 zonder CORS-headers -> "Failed to fetch").
+   mccLastGood(): fetch met harde time-out (AbortController); bewaart de laatste goede JSON per
+   sleutel in localStorage en valt daarop terug, met een zichtbaar "laatst goede stand"-label.
+   mccSrcLabel(): klein label "bron · dd-mm" (groen <=3d, oranje ouder, grijs STATIC/cache).
+   mccUS10Y(): EEN US10Y-bepaling voor Data Hub-tegel en yieldmatrix (was: twee paden -> 4.32 vs 5.24). */
+(function(){
+  function now(){ return Date.now(); }
+  window.mccLastGood = async function(key, url, opts, timeoutMs){
+    var ctl = (typeof AbortController!=='undefined') ? new AbortController() : null;
+    var to = setTimeout(function(){ try{ ctl && ctl.abort(); }catch(e){} }, timeoutMs || 12000);
+    try{
+      var r = await fetch(url, Object.assign({}, opts||{}, ctl ? {signal: ctl.signal} : {}));
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      var d = await r.json();
+      try{ localStorage.setItem('mcc-lg-'+key, JSON.stringify({t: now(), d: d})); }catch(e){}
+      return {d: d, cached: false, t: now()};
+    }catch(e){
+      var msg = (e && e.name==='AbortError') ? 'time-out' : ((e && e.message) || 'fout');
+      var c = null; try{ c = JSON.parse(localStorage.getItem('mcc-lg-'+key)||'null'); }catch(_){}
+      if(c && c.d!=null) return {d: c.d, cached: true, t: c.t, err: msg};
+      throw new Error(msg + ' - Supabase onbereikbaar, nog geen opgeslagen stand');
+    }finally{ clearTimeout(to); }
+  };
+  window.mccFmtTs = function(t){
+    if(!t) return '?';
+    var d = new Date(t); if(isNaN(d)) return String(t).slice(0,10);
+    return d.toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  };
+  window.mccCachedNote = function(res){
+    if(!res || !res.cached) return '';
+    return '<div style="font-size:10px;color:#e8a83a;margin-top:4px">&#9888; Supabase onbereikbaar ('+res.err+') &mdash; laatst goede stand van '+mccFmtTs(res.t)+'</div>';
+  };
+  function ageDays(asOf){ if(!asOf) return null; var t = new Date(asOf).getTime(); return isNaN(t) ? null : (now()-t)/864e5; }
+  window.mccFieldInfo = function(key){
+    var dy = (typeof cachedDbYields!=='undefined' && cachedDbYields) || {};
+    var raw = dy[key]; var v = (raw==null || isNaN(raw)) ? null : parseFloat(raw);
+    var st = dy[key+'_static'] === true;
+    var asOf = (window.cachedDbAsof||{})[key] || null;
+    var src = st ? 'STATIC ref' : (dy[key+'_source'] || (asOf ? 'Supabase' : 'cache'));
+    return {value: v, src: src, asOf: st ? null : asOf, live: v!=null && !st};
+  };
+  window.mccUS10Y = function(fred){
+    // altijd dezelfde FRED-bron als de tegel: lege/ontbrekende fred -> globale cachedFredData
+    if(!(fred && fred.DGS10)) fred = (typeof cachedFredData!=='undefined' && cachedFredData) || fred || {};
+    var c = [], f = fred.DGS10;
+    if(f && f.raw!=null && !f._fromCache && !f._simulated && !isNaN(f.raw))
+      c.push({value: +f.raw, src: 'FRED DGS10', asOf: f.date || null, live: true});
+    var db = mccFieldInfo('usd_10y'); if(db.value!=null) c.push(db);
+    var live = c.filter(function(x){ return x.live; });
+    var pick = live[0] || c[0] || {value: 4.32, src: 'STATIC ref', asOf: null, live: false};
+    var conflict = null;
+    if(live.length >= 2){
+      var vs = live.map(function(x){ return x.value; });
+      if(Math.max.apply(null,vs) - Math.min.apply(null,vs) > 0.25)
+        conflict = live.map(function(x){ return x.src+' '+x.value.toFixed(2)+'%'; }).join(' vs ');
+    }
+    return Object.assign({}, pick, {conflict: conflict});
+  };
+  window.mccSrcLabel = function(info){
+    if(!info) return '';
+    var a = ageDays(info.asOf), col, txt;
+    if(!info.live){ col = '#5a6a80'; txt = info.src || 'STATIC'; }
+    else { col = (a!=null && a<=3) ? '#34d399' : '#e8a83a'; txt = (info.src||'?') + (info.asOf ? ' · '+mccFmtTs(info.asOf).slice(0,5) : ''); }
+    var tip = (info.src||'') + (info.asOf ? ' - stand '+mccFmtTs(info.asOf) : ' - geen live waarneming');
+    var warn = info.conflict ? '<span title="Bronnen wijken &gt;0.25pp af: '+info.conflict+'" style="color:#f87171;font-size:9px"> &#9888; bronnen wijken af</span>' : '';
+    return '<span title="'+tip.replace(/"/g,'&quot;')+'" style="display:block;font-size:8px;font-weight:600;color:'+col+';letter-spacing:.3px;white-space:nowrap">'+txt+warn+'</span>';
+  };
+})();
+</script>
 </head>
 <body>
 
@@ -2797,8 +2868,8 @@ body.theme-light #v65-dock button.v65-refresh{background:#b08d57 !important;colo
     async function load(){
       try{
         var s=sb();
-        var r=await fetch(s.url+'/rest/v1/rpc/mcc_macro_decision',{method:'POST',headers:{apikey:s.key,Authorization:'Bearer '+s.key,'Content-Type':'application/json'},body:'{}'});
-        if(!r.ok)throw new Error(r.status); var d=await r.json();
+        var res=await mccLastGood('regime',s.url+'/rest/v1/rpc/mcc_macro_decision',{method:'POST',headers:{apikey:s.key,Authorization:'Bearer '+s.key,'Content-Type':'application/json'},body:'{}'},15000);
+        var d=res.d;
         if(!d||!d.regime){document.getElementById('rh-score').textContent='geen data';return;}
         var col=regimeCol(d.regime,d.score);
         var rg=document.getElementById('rh-regime'); rg.textContent=d.regime; rg.style.color=col;
@@ -2815,7 +2886,7 @@ body.theme-light #v65-dock button.v65-refresh{background:#b08d57 !important;colo
         }).join('');
         var st=document.getElementById('rh-stance');
         st.style.display='block';
-        st.innerHTML='<b>Stance:</b> '+esc(d.stance)+' &nbsp;·&nbsp; <span class="rh-meta">deterministisch uit liquidity · credit · dollar · rates · vol · momentum · positioning'+(d.asof?' — '+new Date(d.asof).toLocaleString('nl-NL'):'')+'</span>';
+        st.innerHTML='<b>Stance:</b> '+esc(d.stance)+' &nbsp;·&nbsp; <span class="rh-meta">deterministisch uit liquidity · credit · dollar · rates · vol · momentum · positioning'+(d.asof?' — '+new Date(d.asof).toLocaleString('nl-NL'):'')+'</span>'+mccCachedNote(res);
       }catch(e){ document.getElementById('rh-score').textContent='regime laden mislukt ('+e.message+')'; }
     }
     load(); setInterval(load,900000);
@@ -2854,9 +2925,9 @@ body.theme-light #v65-dock button.v65-refresh{background:#b08d57 !important;colo
     async function load(){
       try{
         var s=sb();
-        var r=await fetch(s.url+'/rest/v1/rpc/mcc_cross_asset_map',{method:'POST',headers:{apikey:s.key,Authorization:'Bearer '+s.key,'Content-Type':'application/json'},body:'{}'});
-        if(!r.ok)throw new Error(r.status); var d=await r.json();
-        document.getElementById('rl-div').innerHTML='Gem. |correlatie| <b>'+d.avg_abs+'</b> · '+esc(d.diversification);
+        var res=await mccLastGood('relations',s.url+'/rest/v1/rpc/mcc_cross_asset_map',{method:'POST',headers:{apikey:s.key,Authorization:'Bearer '+s.key,'Content-Type':'application/json'},body:'{}'},15000);
+        var d=res.d;
+        document.getElementById('rl-div').innerHTML='Gem. |correlatie| <b>'+d.avg_abs+'</b> · '+esc(d.diversification)+(res.cached?' <span style="color:#e8a83a">· ⚠ laatst goede stand '+mccFmtTs(res.t)+' (Supabase onbereikbaar)</span>':'');
         document.getElementById('rl-grid').innerHTML=(d.pairs||[]).map(function(p){
           var v=(p.corr>0?'+':'')+Number(p.corr).toFixed(2);
           return '<div class="rl-cell" title="'+esc(p.read)+(p.shift?' — REGIME-SHIFT vs 180d':'')+'">'
@@ -6962,9 +7033,12 @@ window.RiskOverlays = (function(){
   (function(){
     function hvSb(){ if(typeof window.SB_URL==='string'&&typeof window.SB_KEY==='string') return {url:window.SB_URL,key:window.SB_KEY};
       return {url:'https://xpspejqsqerixsfqsegr.supabase.co',key:'sb_publishable_tg1-demI6OJJKcnSt9tCXA_MYGqYC4h'}; }
+    var hvCached=null;
     async function hvGet(path){ var sb=hvSb();
-      var r=await fetch(sb.url+'/rest/v1/'+path,{headers:{apikey:sb.key,Authorization:'Bearer '+sb.key}});
-      if(!r.ok) throw new Error('fetch '+r.status); return r.json(); }
+      // v66: harde time-out + laatst goede stand (hing eerder eindeloos op 'Laden uit house_view...')
+      var res=await mccLastGood('hv-'+path.split('?')[0], sb.url+'/rest/v1/'+path,{headers:{apikey:sb.key,Authorization:'Bearer '+sb.key}},12000);
+      if(res.cached) hvCached=res;
+      return res.d; }
     var convCol={hoog:'var(--green)',gemiddeld:'var(--orange)',laag:'var(--text3)'};
     var scenCol={'risk-on':'#4caf50','base':'#8a96a8','risk-off':'#e74c3c'};
     function esc(s){return String(s==null?'':s).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
@@ -6980,12 +7054,13 @@ window.RiskOverlays = (function(){
     }
     async function load(){
       try{
+        hvCached=null;
         var hv=await hvGet('house_view?select=*&order=asof.desc&limit=1');
         var nc=await hvGet('nowcast_index?select=*&order=asof.desc&limit=2');
         var sc=await hvGet('macro_scenarios?select=*&order=asof.desc&limit=3');
         var h=hv&&hv[0];
         if(!h){ document.getElementById('hv-headline').textContent='Nog geen house view — draai gs_engine_writer.py.'; return; }
-        document.getElementById('hv-updated').textContent = h.asof ? ('bijgewerkt '+new Date(h.asof).toLocaleString('nl-NL')) : '';
+        document.getElementById('hv-updated').innerHTML = (h.asof ? ('bijgewerkt '+new Date(h.asof).toLocaleString('nl-NL')) : '') + mccCachedNote(hvCached);
         document.getElementById('hv-headline').innerHTML = esc(h.headline);
         var cv=h.conviction||'—';
         document.getElementById('hv-conv').innerHTML='<span class="hv-badge" style="background:'+(convCol[cv]||'var(--text3)')+';color:#0f1420">CONVICTION: '+esc(cv).toUpperCase()+'</span>';
@@ -15042,11 +15117,15 @@ async function checkConn() {
     const r = await fetchT(`${WORKER}/rest/v1/rapport_metadata?limit=1`, {headers:SB_HDR}, 8000);
     const ok = r.ok || r.status === 406;
     document.getElementById("connDot").style.background = ok ? "var(--green)" : "var(--red)"; try{document.getElementById("connDot2").style.background = ok ? "var(--green)" : "var(--red)";document.getElementById("connText2").textContent = ok ? "Live" : "Offline";}catch(e){}
-    document.getElementById("connText").textContent = ok ? "Verbonden" : `Fout ${r.status}`;
+    // v66: 5xx = de Supabase-DB ligt eruit (worker zelf werkt: prijzen/nieuws blijven live)
+    document.getElementById("connText").textContent = ok ? "Verbonden" : (r.status >= 500 ? `Supabase onbereikbaar (HTTP ${r.status}) — panelen tonen laatst goede stand` : `Fout ${r.status}`);
     return ok;
   } catch(e) {
     document.getElementById("connDot").style.background = "var(--red)";
-    document.getElementById("connText").textContent = e.name === "AbortError" ? "Timeout" : "Geen verbinding";
+    // fetchT gooit Error('Timeout') (geen AbortError) -> eerder altijd 'Geen verbinding'
+    const isTo = e.name === "AbortError" || /timeout/i.test(e.message||"");
+    document.getElementById("connText").textContent = (isTo ? "Supabase time-out" : "Supabase onbereikbaar") + " — panelen tonen laatst goede stand";
+    try{ document.getElementById("connText2").textContent = "Offline (DB)"; document.getElementById("connDot2").style.background = "var(--red)"; }catch(_){}
     return false;
   }
 }
@@ -20564,16 +20643,12 @@ async function fetchPythonStatus(force) {
     return _pyStatusData;
   }
   try {
-    const r = await fetchT(
+    // v66: time-out + laatst goede stand (Supabase bevriest dagelijks; was: 'Timeout' + lege status)
+    const res = await mccLastGood('pystatus',
       `${(typeof WORKER !== 'undefined') ? WORKER : 'https://moneymaker01.mghjklaassen.workers.dev'}/rest/v1/macro_scraped?select=indicator,source,updated_at,release_date&order=updated_at.desc`,
-      { headers: SB_HDR }, 12000
+      { headers: SB_HDR }, 15000
     );
-    if (!r.ok) {
-      console.warn("[PyStatus] HTTP", r.status);
-      _pyStatusData = { ok: false, error: `HTTP ${r.status}`, rows: [], indicators: 0, sources: {}, lastRunMs: 0 };
-      return _pyStatusData;
-    }
-    const rows = await r.json();
+    const rows = res.d;
     if (!Array.isArray(rows)) {
       _pyStatusData = { ok: false, error: "Invalid response", rows: [], indicators: 0, sources: {}, lastRunMs: 0 };
       return _pyStatusData;
@@ -20598,6 +20673,9 @@ async function fetchPythonStatus(force) {
       indicators: uniqueInds.size,
       sources,
       lastRunMs,
+      cached: !!res.cached,
+      cachedAt: res.cached ? res.t : null,
+      cacheErr: res.cached ? res.err : null,
     };
     _pyStatusLastFetch = Date.now();
     return _pyStatusData;
@@ -20668,7 +20746,8 @@ function renderPythonStatus(elementId) {
     if (timeEl.firstChild) timeEl.firstChild.nodeValue = _pyStatusFmtTime(d.lastRunMs) + " ";
     else timeEl.textContent = _pyStatusFmtTime(d.lastRunMs);
   }
-  if (agoEl) agoEl.textContent = "(" + _pyStatusFmtAgo(d.lastRunMs) + ")";
+  if (agoEl) agoEl.textContent = "(" + _pyStatusFmtAgo(d.lastRunMs) + ")"
+    + (d.cached ? " · ⚠ Supabase onbereikbaar (" + d.cacheErr + "), stand van " + mccFmtTs(d.cachedAt) : "");
 
   // Coverage number — flag if <80 indicators (target: 91+ with v4.1 collector)
   if (covEl) {
@@ -21362,8 +21441,10 @@ async function refreshDataHub() {
     const biasLoaded = cachedDbYields?.usd_bias ? "BIAS ✓" : "BIAS ✕";
     // Data quality assessment
     const dy = cachedDbYields || {};
-    const g8Filled = ["EUR","GBP","JPY","AUD","CAD","NZD","CHF"].filter(c => dy[c.toLowerCase()+"_10y"] != null).length;
-    const cpiFilled = ["EUR","GBP","JPY","AUD","CAD","NZD","CHF"].filter(c => dy[c.toLowerCase()+"_cpi"] != null).length;
+    // v66: statische seeds tellen NIET als gevuld (was: altijd 7/7 door _initStaticYieldFill)
+    const _dhIsLive = k => dy[k] != null && dy[k+"_static"] !== true;
+    const g8Filled = ["EUR","GBP","JPY","AUD","CAD","NZD","CHF"].filter(c => _dhIsLive(c.toLowerCase()+"_10y")).length;
+    const cpiFilled = ["EUR","GBP","JPY","AUD","CAD","NZD","CHF"].filter(c => _dhIsLive(c.toLowerCase()+"_cpi")).length;
     const quality = g8Filled >= 6 && cpiFilled >= 4 ? "HIGH" : g8Filled >= 4 ? "MEDIUM" : "LOW";
     const qColor = quality==="HIGH"?"#34d399":quality==="MEDIUM"?"#fbbf24":"#f87171";
     
@@ -21381,6 +21462,7 @@ async function refreshDataHub() {
     ts.innerHTML = `<span style="color:#f87171">✕ ${esc(e.message)}</span>`;
   }
   btn.disabled = false; btn.textContent = "🔄 REFRESH ALL";
+  try { checkConn(); } catch(_) {}   // v66: status-indicator volgt Refresh All (was alleen bij paginalaad)
 }
 
 // ── v20: LIVE MARKET DATA (Yahoo Finance via worker) ──
@@ -23458,10 +23540,13 @@ function _consolidateFredFromCache(fred) {
     {id:"DGS3MO",dbKey:"usd_3m",  label:"3M Bill",  cat:"yields"},
   ];
   for (const c of _yMap) {
-    if (!fred[c.id]?.raw && dy[c.dbKey] != null) {
+    // v66: statische seeds NIET als FRED-waarneming met datum 'vandaag' opvoeren (dat liet de
+    // 4.32-seed als live US10Y in de tegel verschijnen); datum = echte stand uit cachedDbAsof.
+    if (!fred[c.id]?.raw && dy[c.dbKey] != null && dy[c.dbKey+"_static"] !== true) {
       const v = parseFloat(dy[c.dbKey]);
       if (!isNaN(v) && v > 0 && v < 15) {
-        fred[c.id] = { label:c.label, value:v.toFixed(2)+"%", date:today, cat:c.cat, raw:v, _fromCache:true };
+        const asof = (window.cachedDbAsof||{})[c.dbKey];
+        fred[c.id] = { label:c.label, value:v.toFixed(2)+"%", date:(asof?String(asof).slice(0,10):null), cat:c.cat, raw:v, _fromCache:true };
       }
     }
     // Persist live values back to cache
@@ -23558,10 +23643,13 @@ function dhRenderTicker(fred) {
     if (t.custom && t.id === "GBPJPY") {
       const gbp = _dhV(fred,"DEXUSUK"), jpy = _dhV(fred,"DEXJPUS");
       raw = (gbp && jpy) ? gbp * jpy : null;
+    } else if (t.id === "DGS10" && typeof mccUS10Y === "function") {
+      var _u10 = mccUS10Y(fred); raw = _u10.value;
     } else {
       raw = _dhV(fred, t.id);
     }
     el.textContent = raw != null ? t.fmt(raw) : '—';
+    if (t.id === "DGS10" && typeof mccUS10Y === "function" && raw != null) el.innerHTML = t.fmt(raw) + mccSrcLabel(_u10);
     if (t.custom && t.id === "GBPJPY") {
       // Compute GBP/JPY 30d delta from component deltas
       const gbpD = fredDeltas["DEXUSUK"], jpyD = fredDeltas["DEXJPUS"];
@@ -24941,10 +25029,16 @@ function dhRenderG8YieldCurves(fred) {
     const lc  = code.toLowerCase();
     const exC = ex[code] || {};
     const y2     = _v(lc,"2y",exC.yield2y,code)  ?? ST2Y[code];
-    const y10    = _v(lc,"10y",exC.yield10y,code) ?? ST10Y[code];
+    // v66: US10Y via dezelfde bepaling als de Data Hub-tegel (mccUS10Y) -> geen 4.32 vs 5.24 meer
+    const i10    = (code==="USD" && typeof mccUS10Y==="function") ? mccUS10Y(fred) : (typeof mccFieldInfo==="function" ? mccFieldInfo(lc+"_10y") : null);
+    const y10    = (code==="USD" && i10 && i10.value!=null) ? i10.value : (_v(lc,"10y",exC.yield10y,code) ?? ST10Y[code]);
+    const i2     = (typeof mccFieldInfo==="function") ? mccFieldInfo(lc+"_2y") : null;
+    if (i2 && i2.value==null) { i2.src = "REF " + (REFERENCE_VALUES?.as_of || ""); i2.live = false; }
+    if (i10 && i10.value==null) { i10.src = "REF " + (REFERENCE_VALUES?.as_of || ""); i10.live = false; }
     const policy = _v(lc,"policy",null,code)       ?? STPOL[code];
     const cpi    = dy[lc+"_cpi"] != null ? parseFloat(dy[lc+"_cpi"]) : STCPI[code];
-    const isEst  = (dy[lc+"_2y"] == null || dy[lc+"_2y_static"] === true);
+    // v66: live = 2Y EN 10Y zijn echte waarnemingen (was: alleen 2Y bekeken)
+    const isEst  = !(i2 && i2.live) || !(i10 && i10.live);
     const stance = dy[lc+"_cb_stance"] || STSTANCE[code];
     const termPrem  = (y2!=null&&policy!=null) ? +(y2-policy).toFixed(2) : null;
     // v65.0.0: prefer real_yield_10y from macro_scraped (Tier 1/2/3 fetcher) over local 2Y-CPI calc
@@ -24954,7 +25048,7 @@ function dhRenderG8YieldCurves(fred) {
                     : (y2!=null&&cpi!=null) ? +(y2-cpi).toFixed(2) : null;
     const realSrc   = realFromDb != null ? "DB" : "calc";
     const s2s10     = (y10!=null&&y2!=null)    ? +(y10-y2).toFixed(2)    : null;
-    return {code,lc,flag:FLAGS[code],y2,y10,policy,cpi,isEst,stance,termPrem,realYield,realSrc,s2s10};
+    return {code,lc,flag:FLAGS[code],y2,y10,policy,cpi,isEst,stance,termPrem,realYield,realSrc,s2s10,i2,i10};
   }).filter(r=>r.y2!=null).sort((a,b)=>b.y2-a.y2);
 
   const wrap = document.getElementById("g8MatrixRows");
@@ -24997,8 +25091,8 @@ function dhRenderG8YieldCurves(fred) {
       '<span style="font-size:11px;font-weight:700;color:'+cc+';margin-left:3px">'+r.code+'</span>'+
       (r.isEst?'<div style="font-size:7px;color:#1a3a5a;letter-spacing:.5px;margin-top:1px">~ EST</div>':'')+'</div>'+
       barTrack+
-      '<div style="text-align:right;font-size:11px;font-weight:700;color:'+cc+'">'+fmt(r.y2)+'</div>'+
-      '<div style="text-align:right;font-size:11px;font-weight:600;color:#3d6a9c">'+fmt(r.y10)+'</div>'+
+      '<div style="text-align:right;font-size:11px;font-weight:700;color:'+cc+'">'+fmt(r.y2)+(typeof mccSrcLabel==="function"?mccSrcLabel(r.i2):'')+'</div>'+
+      '<div style="text-align:right;font-size:11px;font-weight:600;color:#3d6a9c">'+fmt(r.y10)+(typeof mccSrcLabel==="function"?mccSrcLabel(r.i10):'')+'</div>'+
       '<div style="text-align:right;font-size:11px;font-weight:600;color:'+tpCol(r.termPrem)+'">'+sgn(r.termPrem)+'</div>'+
       '<div style="text-align:right;font-size:11px;font-weight:600;color:'+ryCol(r.realYield)+'">'+sgn(r.realYield)+'</div>'+
       '<div style="text-align:right;font-size:11px;font-weight:600;color:'+s10Col(r.s2s10)+'">'+sgn(r.s2s10)+'</div>'+
