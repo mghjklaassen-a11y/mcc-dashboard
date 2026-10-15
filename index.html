@@ -2672,14 +2672,41 @@ body.theme-light #v65-dock button.v65-refresh{background:#b08d57 !important;colo
       if(!r.ok) throw new Error('HTTP '+r.status);
       var d = await r.json();
       try{ localStorage.setItem('mcc-lg-'+key, JSON.stringify({t: now(), d: d})); }catch(e){}
+      try{ window.mccPanelOk && window.mccPanelOk(key); }catch(_){}
       return {d: d, cached: false, t: now()};
     }catch(e){
       var msg = (e && e.name==='AbortError') ? 'time-out' : ((e && e.message) || 'fout');
       var c = null; try{ c = JSON.parse(localStorage.getItem('mcc-lg-'+key)||'null'); }catch(_){}
+      try{ window.mccPanelError && window.mccPanelError(key, msg, !!(c && c.d!=null)); }catch(_){}
       if(c && c.d!=null) return {d: c.d, cached: true, t: c.t, err: msg};
-      throw new Error(msg + ' - Supabase onbereikbaar, nog geen opgeslagen stand');
+      throw new Error(msg + (/\b(401|403)\b/.test(msg) ? ' - geen leesrecht (anon-grant/RLS-policy ontbreekt), nog geen opgeslagen stand' : ' - Supabase onbereikbaar, nog geen opgeslagen stand'));
     }finally{ clearTimeout(to); }
   };
+  // v66: zichtbare paneel-fouten (punt 8): niets mag stil falen — ook niet als er een cache getoond wordt
+  window.__mccErr = {};
+  function _renderErrBar(){
+    try{
+      var keys = Object.keys(window.__mccErr);
+      var el = document.getElementById('mcc-err-bar');
+      if(!keys.length){ if(el) el.remove(); return; }
+      if(!el){ el = document.createElement('div'); el.id='mcc-err-bar';
+        el.style.cssText='position:fixed;left:10px;bottom:10px;z-index:99999;max-width:460px;background:#2a1215;border:1px solid #ef4444;color:#fecaca;font:11px/1.4 system-ui,sans-serif;padding:6px 10px;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.4);cursor:pointer';
+        el.onclick=function(){ el.dataset.open = el.dataset.open==='1' ? '0' : '1'; _renderErrBar(); };
+        (document.body||document.documentElement).appendChild(el); }
+      var open = el.dataset.open==='1';
+      el.innerHTML = '<b>&#9888; '+keys.length+' paneel'+(keys.length>1?'en':'')+' met fout</b>'
+        + (open ? keys.map(function(k){ var e=window.__mccErr[k];
+            return '<div style="margin-top:3px">• <b>'+k+'</b>: '+String(e.msg).replace(/</g,'&lt;')+(e.cached?' <i>(laatst goede stand getoond)</i>':'')
+              +' <span style="opacity:.7">'+new Date(e.t).toLocaleTimeString('nl-NL')+'</span></div>'; }).join('') : ' <span style="opacity:.75">(klik voor details)</span>');
+    }catch(_){}
+  }
+  window.mccPanelError = function(panel, msg, cached){
+    var m = String(msg||'fout');
+    if(/\b(401|403)\b/.test(m)) m += ' — rechtenprobleem (anon-grant/RLS-policy ontbreekt)';
+    window.__mccErr[panel] = {msg: m, cached: !!cached, t: Date.now()};
+    if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', _renderErrBar, {once:true}); else _renderErrBar();
+  };
+  window.mccPanelOk = function(panel){ if(window.__mccErr[panel]){ delete window.__mccErr[panel]; _renderErrBar(); } };
   window.mccFmtTs = function(t){
     if(!t) return '?';
     var d = new Date(t); if(isNaN(d)) return String(t).slice(0,10);
@@ -2687,7 +2714,8 @@ body.theme-light #v65-dock button.v65-refresh{background:#b08d57 !important;colo
   };
   window.mccCachedNote = function(res){
     if(!res || !res.cached) return '';
-    return '<div style="font-size:10px;color:#e8a83a;margin-top:4px">&#9888; Supabase onbereikbaar ('+res.err+') &mdash; laatst goede stand van '+mccFmtTs(res.t)+'</div>';
+    var why = /\b(401|403)\b/.test(String(res.err)) ? 'Geen leesrecht' : 'Supabase onbereikbaar';
+    return '<div style="font-size:10px;color:#e8a83a;margin-top:4px">&#9888; '+why+' ('+res.err+') &mdash; laatst goede stand van '+mccFmtTs(res.t)+'</div>';
   };
   function ageDays(asOf){ if(!asOf) return null; var t = new Date(asOf).getTime(); return isNaN(t) ? null : (now()-t)/864e5; }
   window.mccFieldInfo = function(key){
@@ -2715,6 +2743,13 @@ body.theme-light #v65-dock button.v65-refresh{background:#b08d57 !important;colo
     }
     return Object.assign({}, pick, {conflict: conflict});
   };
+  // v66: één stance-regel (arbiter) voor zowel regime-hero als House View
+  window.mccArbiterLine = function(d){
+    if(!d || !d.stance) return '';
+    var c = d.conflict ? '#e8a83a' : '#34d399';
+    return '<b style="color:'+c+'">Stance (arbiter): '+String(d.stance).replace(/</g,'&lt;')+'</b>'
+      + (d.conflict && d.conflict_reason ? '<br><span style="color:#e8a83a">⚠ conflicterende signalen: '+String(d.conflict_reason).replace(/</g,'&lt;')+'</span>' : '');
+  };
   window.mccSrcLabel = function(info){
     if(!info) return '';
     var a = ageDays(info.asOf), col, txt;
@@ -2740,6 +2775,41 @@ body.theme-light #v65-dock button.v65-refresh{background:#b08d57 !important;colo
       <span id="hdr-refresh-arrow" style="font-size:14px;line-height:1">⟳</span>
       <span>Refresh All</span>
     </button>
+    <!-- review 15-10 #10: kostenteller AI-calls + Supabase-gebruik (rpc mcc_usage_counters) -->
+    <div id="hdr-usage" style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;cursor:help" title="laden…">
+      <span style="font-size:9px;letter-spacing:2px;color:rgba(176,141,87,.5);text-transform:uppercase">Kosten</span>
+      <span id="hdr-usage-txt" style="color:rgba(200,210,230,.5);font-size:11px;font-weight:500;font-family:'IBM Plex Mono',monospace;white-space:nowrap">—</span>
+    </div>
+    <script>
+    (function(){
+      var URL='https://xpspejqsqerixsfqsegr.supabase.co',KEY='sb_publishable_tg1-demI6OJJKcnSt9tCXA_MYGqYC4h';
+      function fmtB(b){ return b>=1073741824?(b/1073741824).toFixed(2)+' GB':(b/1048576).toFixed(0)+' MB'; }
+      async function load(){
+        var el=document.getElementById('hdr-usage-txt'), box=document.getElementById('hdr-usage');
+        try{
+          var u=(typeof window.SB_URL==='string'?window.SB_URL:URL), k=(typeof window.SB_KEY==='string'?window.SB_KEY:KEY);
+          var res=await mccLastGood('usage',u+'/rest/v1/rpc/mcc_usage_counters',{method:'POST',headers:{apikey:k,Authorization:'Bearer '+k,'Content-Type':'application/json'},body:'{}'},15000);
+          var d=res.d||{}, ai=d.ai||{}, s=d.supabase||{}, t=ai.today||{}, w=ai.d7||{}, m=ai.d30||{};
+          window.__mccUsage=d;
+          var pct=s.db_limit_bytes?Math.round(100*s.db_bytes/s.db_limit_bytes):null, cr=s.cron_24h||{};
+          el.innerHTML='AI '+(t.calls||0)+' · €'+Number(t.eur||0).toFixed(2)+' vandaag · DB '+(pct!=null?pct+'%':'?')
+            +(cr.failed?' · <span style="color:#e8a83a">cron '+cr.failed+'✗</span>':'')+(res.cached?' <span style="color:#e8a83a">(cache)</span>':'');
+          el.style.color=pct>=85?'#f87171':pct>=70?'#e8a83a':'rgba(200,210,230,.75)';
+          var prov=Object.keys(ai.per_provider||{}).map(function(p){ var x=ai.per_provider[p]; return '  '+p+': '+x.calls+' calls, €'+x.eur; }).join('\n');
+          var roles=s.statements_by_role||{};
+          box.title='AI-calls (gelogd via ai_router, llm_cost_log)\n'
+            +'  vandaag: '+(t.calls||0)+' calls, €'+(t.eur||0)+'\n  7 dagen: '+(w.calls||0)+' calls, €'+(w.eur||0)+'\n  30 dagen: '+(m.calls||0)+' calls, €'+(m.eur||0)+'\n'
+            +(prov?'per provider (30d):\n'+prov+'\n':'')+'  router-fouten 24h: '+(ai.router_errors_24h||0)+'\n\n'
+            +'Supabase\n  database: '+fmtB(s.db_bytes||0)+' van '+fmtB(s.db_limit_bytes||0)+' ('+pct+'%)\n'
+            +'  DB-statements sinds '+String(s.statements_since||'?').slice(0,10)+': dashboard/PostgREST '+(roles.authenticator||0)+', service_role '+(roles.service_role||0)+'\n'
+            +'  pg_cron 24h: '+(cr.runs||0)+' runs, '+(cr.failed||0)+' mislukt'+((cr.failed_jobs||[]).length?' ('+cr.failed_jobs.join(', ')+')':'')+'\n'
+            +'  pg_net HTTP-calls 24h: '+(s.http_24h||0)+'\n\n'+(s.note||'')+'\nstand: '+mccFmtTs(d.generated_at)+(res.cached?' (laatst goede stand)':'');
+        }catch(e){ el.innerHTML='<span style="color:#f87171">n/b</span>'; box.title='Kostenteller laden mislukt: '+e.message; }
+      }
+      if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',load); else load();
+      setInterval(load,900000); window.mccUsageReload=load;
+    })();
+    </script>
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
       <span style="font-size:9px;letter-spacing:2px;color:rgba(176,141,87,.5);text-transform:uppercase">Status</span>
       <span id="connText" style="color:rgba(200,210,230,.5);font-size:12px;font-weight:500">Verbinden...</span>
@@ -2871,22 +2941,28 @@ body.theme-light #v65-dock button.v65-refresh{background:#b08d57 !important;colo
         var res=await mccLastGood('regime',s.url+'/rest/v1/rpc/mcc_macro_decision',{method:'POST',headers:{apikey:s.key,Authorization:'Bearer '+s.key,'Content-Type':'application/json'},body:'{}'},15000);
         var d=res.d;
         if(!d||!d.regime){document.getElementById('rh-score').textContent='geen data';return;}
-        var col=regimeCol(d.regime,d.score);
+        var col=d.conflict?O:regimeCol(d.regime,d.score);
         var rg=document.getElementById('rh-regime'); rg.textContent=d.regime; rg.style.color=col;
-        document.getElementById('rh-score').innerHTML='Score <b>'+d.score+'</b>/100 · Confidence <b>'+d.confidence+'%</b>';
+        // v66: arbiter (markt-factoren x House View) — conflict expliciet tonen
+        var hv=d.house_view||{};
+        document.getElementById('rh-score').innerHTML='Score <b>'+d.score+'</b>/100 · Confidence <b>'+d.confidence+'%</b>'
+          +(d.market_regime?' · markt: <b>'+esc(d.market_regime)+'</b>':'')
+          +(hv.modal?' · House View modaal: <b>'+esc(hv.modal)+' '+(hv.modal==='risk-off'?hv.risk_off:hv.modal==='risk-on'?hv.risk_on:hv.base)+'%</b>':'')
+          +(d.conflict?'<div style="margin-top:4px;padding:4px 8px;border:1px solid '+O+';border-radius:4px;color:'+O+';font-weight:700">⚠ CONFLICTERENDE SIGNALEN — '+esc(d.conflict_reason||'')+'</div>':'');
         document.getElementById('rh-factors').innerHTML=(d.factors||[]).map(function(f){
           return '<div class="rh-f" title="'+esc(f.detail)+'"><span class="rh-dot" style="background:'+sigCol(f.signal)+'"></span>'
             +'<span class="rh-f-n">'+esc(f.name)+'</span><span style="color:'+sigCol(f.signal)+'">'+esc(f.signal)+'</span>'
             +'<span class="rh-f-c">'+f.conviction+'%</span></div>';
         }).join('');
         document.getElementById('rh-exp').innerHTML=(d.exposures||[]).map(function(e){
-          return '<div class="rh-e"><span class="rh-e-n">'+esc(e.asset)+'</span>'
+          return '<div class="rh-e"'+(e.derivation?' title="'+esc(e.derivation)+'"':'')+'><span class="rh-e-n">'+esc(e.asset)+(e.derivation?' <span style="opacity:.6;cursor:help">ⓘ</span>':'')+'</span>'
             +'<span class="rh-stars" style="color:'+(e.stars>=4?G:e.stars<=2?N:O)+'">'+stars(e.stars)+'</span>'
             +'<span class="rh-e-b" style="color:'+biasCol(e.bias)+';background:'+(e.bias==='Long'?'rgba(76,175,80,.14)':e.bias==='Short'?'rgba(231,76,60,.14)':'rgba(154,166,186,.12)')+'">'+esc(e.bias)+'</span></div>';
         }).join('');
         var st=document.getElementById('rh-stance');
         st.style.display='block';
-        st.innerHTML='<b>Stance:</b> '+esc(d.stance)+' &nbsp;·&nbsp; <span class="rh-meta">deterministisch uit liquidity · credit · dollar · rates · vol · momentum · positioning'+(d.asof?' — '+new Date(d.asof).toLocaleString('nl-NL'):'')+'</span>'+mccCachedNote(res);
+        st.innerHTML='<b>Stance:</b> '+esc(d.stance)+' &nbsp;·&nbsp; <span class="rh-meta">deterministisch uit liquidity · credit · dollar · rates · vol · momentum · positioning'+(d.asof?' — '+new Date(d.asof).toLocaleString('nl-NL'):'')+'</span>'+(d.stance_source?'<div class="rh-meta" style="opacity:.7">bron stance: '+esc(d.stance_source)+'</div>':'')+mccCachedNote(res);
+        try{ window.__mccArbiter = d; var hs=document.getElementById('hv-arbiter'); if(hs) hs.innerHTML=window.mccArbiterLine(d); }catch(_){}
       }catch(e){ document.getElementById('rh-score').textContent='regime laden mislukt ('+e.message+')'; }
     }
     load(); setInterval(load,900000);
@@ -2940,6 +3016,139 @@ body.theme-light #v65-dock button.v65-refresh{background:#b08d57 !important;colo
     }
     load(); setInterval(load,900000);
     window.mccRelationsReload = load;   // v66: ook herladen bij Refresh All
+  })();
+  </script>
+</section>
+
+<!-- ═══ THESIS-BOARD 1-2 WEKEN (review 15-10 #9): bias per G8 + invalidatie, event-risico,
+     exposure per thesis, track record, wat is veranderd sinds gisteren. Bron: rpc mcc_thesis_board ═══ -->
+<section id="mcc-thesis" aria-label="Thesis-board">
+  <style>
+    #mcc-thesis{--tb-g:#4caf50;--tb-r:#e74c3c;--tb-o:#e8a83a;--tb-txt:#e8ecf4;--tb-txt2:#9aa6ba;--tb-line:rgba(255,255,255,.07);--tb-bg:#0a1018;--tb-card:#111a2c;
+      background:var(--tb-bg);border-bottom:1px solid var(--tb-line);padding:9px 20px 11px;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--tb-txt)}
+    #mcc-thesis summary{cursor:pointer;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;list-style:none}
+    #mcc-thesis summary::-webkit-details-marker{display:none}
+    #mcc-thesis .tb-k{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--tb-txt2);font-weight:700}
+    #mcc-thesis .tb-m{font-size:11px;color:var(--tb-txt2)}
+    #mcc-thesis .tb-m b{color:var(--tb-txt)}
+    #mcc-thesis .tb-grid{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(0,1fr);gap:10px;margin-top:8px}
+    @media(max-width:1100px){#mcc-thesis .tb-grid{grid-template-columns:minmax(0,1fr)}}
+    #mcc-thesis .tb-card{background:var(--tb-card);border:1px solid var(--tb-line);border-radius:6px;padding:8px 10px;min-width:0}
+    #mcc-thesis .tb-ct{font-size:9px;letter-spacing:1.6px;text-transform:uppercase;color:var(--tb-txt2);font-weight:700;margin-bottom:6px}
+    #mcc-thesis .tb-scroll{overflow-x:auto}
+    #mcc-thesis table{border-collapse:collapse;width:100%;font-size:11px}
+    #mcc-thesis th{font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:var(--tb-txt2);font-weight:600;text-align:left;padding:3px 6px;border-bottom:1px solid var(--tb-line);white-space:nowrap}
+    #mcc-thesis td{padding:4px 6px;border-bottom:1px solid var(--tb-line);vertical-align:top}
+    #mcc-thesis .tb-mono{font-family:'IBM Plex Mono',monospace}
+    #mcc-thesis .tb-inv{font-size:10px;color:var(--tb-txt2);line-height:1.35;min-width:220px}
+    #mcc-thesis .tb-li{font-size:11px;padding:3px 0;border-bottom:1px solid var(--tb-line);line-height:1.35}
+    #mcc-thesis .tb-li:last-child{border-bottom:none}
+    #mcc-thesis .tb-pill{font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:4px;white-space:nowrap}
+    body.theme-light #mcc-thesis{--tb-txt:#1b2333;--tb-txt2:#5a6678;--tb-line:rgba(0,0,0,.09);--tb-bg:#e9edf4;--tb-card:#f4f6fb}
+  </style>
+  <details id="tb-details" open>
+    <summary><span class="tb-k">Thesis-board · 1-2 weken (CFD/FX) ▾</span><span class="tb-m" id="tb-head">laden…</span></summary>
+    <div class="tb-grid">
+      <div class="tb-card"><div class="tb-ct">Bias per G8-valuta · sinds · wat maakt de view ongeldig</div><div class="tb-scroll" id="tb-ccy"><span class="tb-m">laden…</span></div></div>
+      <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+        <div class="tb-card"><div class="tb-ct">Wat is veranderd sinds gisteren</div><div id="tb-chg"><span class="tb-m">laden…</span></div></div>
+        <div class="tb-card"><div class="tb-ct">Event-risico · komende 10 handelsdagen</div><div id="tb-ev"><span class="tb-m">laden…</span></div></div>
+        <div class="tb-card"><div class="tb-ct">Exposure per thesis</div><div id="tb-exp"><span class="tb-m">laden…</span></div></div>
+        <div class="tb-card"><div class="tb-ct">Track record</div><div id="tb-track"><span class="tb-m">laden…</span></div></div>
+      </div>
+    </div>
+  </details>
+  <script>
+  (function(){
+    var URL='https://xpspejqsqerixsfqsegr.supabase.co',KEY='sb_publishable_tg1-demI6OJJKcnSt9tCXA_MYGqYC4h';
+    function sb(){return {url:(typeof window.SB_URL==='string'?window.SB_URL:URL),key:(typeof window.SB_KEY==='string'?window.SB_KEY:KEY)};}
+    function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+    function dm(t){ if(!t) return '?'; var d=new Date(t); return isNaN(d)?String(t).slice(0,10):d.toLocaleDateString('nl-NL',{day:'2-digit',month:'2-digit'}); }
+    function dmt(t){ var d=new Date(t); return isNaN(d)?String(t):d.toLocaleString('nl-NL',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+    var G='var(--tb-g)',R='var(--tb-r)',O='var(--tb-o)',N='var(--tb-txt2)';
+    function stCol(s){ return s==='LONG'?G:s==='SHORT'?R:N; }
+    function pill(txt,col){ return '<span class="tb-pill" style="color:'+col+';border:1px solid '+col+'">'+esc(txt)+'</span>'; }
+    // "geen edge = geen edge": hit-rate <55% of gemiddeld rendement <=0 -> expliciet zo labelen
+    function edgeVerdict(h){ if(!h||!h.n) return {txt:'nog geen uitkomsten',col:N};
+      if(h.n<30) return {txt:'te weinig uitkomsten (n='+h.n+')',col:N};
+      if(h.hit>=55 && h.avg_bp>0) return {txt:'edge zichtbaar',col:G};
+      return {txt:'GEEN aantoonbare edge',col:R}; }
+    try{ var op=localStorage.getItem('mcc-tb-open'); if(op==='0') document.getElementById('tb-details').open=false; }catch(e){}
+    document.getElementById('tb-details').addEventListener('toggle',function(){ try{ localStorage.setItem('mcc-tb-open',this.open?'1':'0'); }catch(e){} });
+
+    function render(d,res){
+      var tr=d.track||{}, h10=tr.h10||{}, v=edgeVerdict(h10), per=tr.per_ccy||{};
+      document.getElementById('tb-head').innerHTML='stand <b>'+dm(d.as_of)+'</b> (vs '+dm(d.prev)+')'
+        +' · FX-arbiter 10d: hit <b>'+(h10.hit!=null?h10.hit+'%':'n/b')+'</b>, gem <b>'+(h10.avg_bp!=null?h10.avg_bp+'bp':'n/b')+'</b> (n='+(h10.n||0)+') '
+        +pill(v.txt,v.col)+(res&&res.cached?' <span style="color:#e8a83a">· ⚠ laatst goede stand '+mccFmtTs(res.t)+'</span>':'');
+
+      var rows=(d.ccy||[]);
+      if(!rows.length){ document.getElementById('tb-ccy').innerHTML='<span class="tb-m">Geen arbiter-snapshot gevonden (arbiter_daily_snapshot leeg of cron 06:40 nog niet gedraaid).</span>'; }
+      else document.getElementById('tb-ccy').innerHTML='<table><thead><tr><th>Ccy</th><th>Bias (arbiter)</th><th>Sinds</th><th>Conv.</th><th>Carry</th><th>Regime-laag</th><th>Spot</th><th>Ongeldig als…</th><th>Volgend event</th><th>10d-track</th></tr></thead><tbody>'
+        +rows.map(function(c){
+          var since=c.since?(c.since===d.history_from?'≤'+dm(c.since):dm(c.since)):'?';
+          var sinceTip=c.since===d.history_from?'reeks loopt al sinds begin van de snapshot-historie':'';
+          var re=c.regime_exposure, reTxt='—', reTip='';
+          if(re){ reTxt=esc(re.bias)+' '+'★★★★★'.slice(0,re.stars||0); reTip=re.derivation||'';
+            var rs=re.bias==='Long'?1:re.bias==='Short'?-1:0, as=c.stance==='LONG'?1:c.stance==='SHORT'?-1:0;
+            if(rs!==as) reTxt+=' <span style="color:'+O+'" title="Regime-laag (mcc_macro_decision) en FX-arbiter geven een andere richting: conflicterende signalen">⚠</span>'; }
+          var carry=c.carry_supports===true?'<span style="color:'+G+'">steunt</span>':c.carry_supports===false?'<span style="color:'+O+'">tegen</span>':'<span style="color:'+N+'">n/b</span>';
+          var inv=c.invalidation||{}, invTxt=esc(inv.text||'—')+(inv.src==='biaskaart'?' <span style="color:'+G+'">(eigen biaskaart)</span>':' <span style="opacity:.6">(model-regel)</span>');
+          var sp=c.spot||{}, spTxt=sp.lvl!=null?'<span class="tb-mono">'+esc(sp.pair)+'</span> '+(sp.pair&&sp.pair.indexOf('USD')===0?(1/sp.lvl).toFixed(sp.pair==='USDJPY'?2:4):(sp.pair==='DXY'?Number(sp.lvl).toFixed(2):Number(sp.lvl).toFixed(4)))+'<div style="font-size:9px;color:'+N+'">slot '+dm(sp.date)+' · σ2w '+(c.sigma_2w_pct!=null?c.sigma_2w_pct+'%':'n/b')+'</div>':'n/b';
+          var ne=c.next_event?esc(c.next_event.name)+'<div style="font-size:9px;color:'+N+'">'+dmt(c.next_event.at)+'</div>':'<span style="color:'+N+'">geen High-impact in venster</span>';
+          var pc=per[c.ccy], tk=pc?'<span class="tb-mono" style="color:'+((pc.hit10>=55&&pc.avg10_bp>0)?G:R)+'">'+pc.hit10+'% · '+pc.avg10_bp+'bp</span><div style="font-size:9px;color:'+N+'">n='+pc.n10+'</div>':'<span style="color:'+N+'">n/b</span>';
+          return '<tr><td><b>'+esc(c.ccy)+'</b></td>'
+            +'<td>'+pill(c.stance,stCol(c.stance))+(c.changed?' <span style="color:'+O+'" title="vorige: '+esc(c.prev_stance)+'">● nieuw</span>':'')+'<div style="font-size:9px;color:'+N+'">'+esc(c.decided_by||'')+'</div></td>'
+            +'<td class="tb-mono" title="'+esc(sinceTip)+'">'+since+'</td>'
+            +'<td class="tb-mono">'+(c.conviction!=null?c.conviction:'—')+'</td>'
+            +'<td>'+carry+(c.yld_diff_2y!=null?'<div style="font-size:9px;color:'+N+'">2y Δ '+Number(c.yld_diff_2y).toFixed(2)+'pp</div>':'')+'</td>'
+            +'<td title="'+esc(reTip)+'">'+reTxt+'</td>'
+            +'<td>'+spTxt+'</td><td class="tb-inv">'+invTxt+'</td><td>'+ne+'</td><td>'+tk+'</td></tr>';
+        }).join('')+'</tbody></table><div style="font-size:9.5px;color:'+N+';margin-top:5px">Bias = FX-arbiter (arbiter_daily_snapshot, dagelijks 06:40). Regime-laag = exposure uit mcc_macro_decision; ⚠ = richtingen verschillen. Invalidatie: eigen biaskaart gaat voor; anders flip van de arbiter of een slot 1σ (2 weken) tegen de view.</div>';
+
+      var ch=d.changes||[];
+      document.getElementById('tb-chg').innerHTML=ch.length?ch.map(function(x){
+          var col=x.kind==='stance'||x.kind==='regime'?O:x.kind==='house_view'?O:N;
+          return '<div class="tb-li"><span style="color:'+col+';font-weight:600">'+esc({stance:'Bias',regime:'Regime',house_view:'House View',release:'Release'}[x.kind]||x.kind)+'</span> · '+esc(x.text)+(x.at?' <span style="color:'+N+';font-size:9.5px">'+dmt(x.at)+'</span>':'')+'</div>';
+        }).join(''):'<span class="tb-m">Geen wijzigingen: geen bias-flips, regime en House View gelijk, geen High-impact releases in de laatste 30 uur.</span>';
+
+      var ev=d.events||[], cov=d.coverage||{};
+      document.getElementById('tb-ev').innerHTML=(ev.length?ev.map(function(e){
+          var cb=/rentebesluit|decision|assessment|ocr/i.test(e.name);
+          return '<div class="tb-li"><span class="tb-mono" style="color:'+N+'">'+dmt(e.at)+'</span> · <b>'+esc(e.ccy)+'</b> '+(cb?'<b style="color:'+O+'">'+esc(e.name)+'</b>':esc(e.name))
+            +(e.forecast!=null?' <span style="color:'+N+'">(verw. '+esc(e.forecast)+(e.previous!=null?', vorig '+esc(e.previous):'')+')</span>':'')
+            +' <span style="font-size:9px;color:'+N+'" title="bron">'+esc(e.src||'')+'</span></div>';
+        }).join(''):'<span class="tb-m">Geen High-impact events in de komende 14 kalenderdagen gevonden.</span>')
+        +'<div style="font-size:9.5px;color:'+N+';margin-top:4px">Venster '+esc(cov.note||'14 dagen')+'. Forex Factory-feed dekt t/m '+dm(cov.ff_thisweek_until)+'; daarna alleen CB-besluiten ('+esc(cov.cb_sources||'')+') en FRED-releases. Data-events van volgende week verschijnen pas na de zondag-refresh.</div>';
+
+      var ex=d.exposure||{}, cards=ex.cards||[], m=ex.model||{}, net=ex.net||{};
+      var netTxt=Object.keys(net).map(function(k){ return '<b>'+esc(k)+'</b> '+(net[k]>0?'+':'')+net[k]; }).join(' · ');
+      document.getElementById('tb-exp').innerHTML=(cards.length
+          ? cards.map(function(c){ return '<div class="tb-li"><b>'+esc(c.instrument)+'</b> '+pill(c.direction>0?'LONG':'SHORT',c.direction>0?G:R)+' conv '+esc(c.conviction)+' · t/m '+dm(c.valid_until)+'<div style="font-size:10px;color:'+N+'">'+esc(c.thesis||'')+'</div><div style="font-size:10px;color:'+O+'">ongeldig als: '+esc(c.invalidation||'—')+'</div></div>'; }).join('')
+            +'<div class="tb-li">Netto per valuta (aantal kaarten): '+(netTxt||'neutraal')+'</div>'
+          : '<div class="tb-li"><span class="tb-m">Geen actieve biaskaarten. Leg je thesis vast met <b style="color:'+O+'">/biaskaart</b> in de Telegram-bot om exposure per thesis te zien.</span></div>')
+        +'<div class="tb-li" title="'+esc(m.note||'')+'">Model-concentratie (arbiter): '+(m.long||0)+' long · '+(m.short||0)+' short · '+(m.flat||0)+' flat vs USD → impliciet netto USD <b>'+(m.implied_usd>0?'+':'')+(m.implied_usd||0)+'</b></div>';
+
+      var rt=d.regime_track||{}, h5=tr.h5||{};
+      document.getElementById('tb-track').innerHTML='<div class="tb-li"><b>FX-arbiter</b> sinds '+dm(tr.from)+': 5d hit '+(h5.hit!=null?h5.hit+'%':'n/b')+' (gem '+(h5.avg_bp!=null?h5.avg_bp+'bp':'n/b')+', n='+(h5.n||0)+') · 10d hit '+(h10.hit!=null?h10.hit+'%':'n/b')+' (gem '+(h10.avg_bp!=null?h10.avg_bp+'bp':'n/b')+', n='+(h10.n||0)+') '+pill(v.txt,v.col)
+          +'<div style="font-size:9.5px;color:'+N+'">'+esc(tr.method||'')+'</div></div>'
+        +'<div class="tb-li"><b>Regime-call</b>: '+(rt.n||0)+' dag(en) gelogd sinds '+dm(rt.from)+'. '
+          +((rt.rows||[]).slice(0,5).map(function(r){ return dm(r.as_of)+' '+esc(r.regime)+' ('+r.score+')'+(r.conflict?' ⚠':''); }).join(' · '))
+          +'<div style="font-size:9.5px;color:'+N+'">'+esc(rt.note||'')+'</div></div>';
+    }
+    async function load(){
+      try{
+        var s=sb();
+        var res=await mccLastGood('thesis',s.url+'/rest/v1/rpc/mcc_thesis_board',{method:'POST',headers:{apikey:s.key,Authorization:'Bearer '+s.key,'Content-Type':'application/json'},body:'{}'},20000);
+        if(!res.d||!res.d.as_of){ document.getElementById('tb-head').textContent='geen data (mcc_thesis_board gaf een lege uitkomst)'; return; }
+        render(res.d,res);
+      }catch(e){
+        document.getElementById('tb-head').innerHTML='<span style="color:#f87171">thesis-board laden mislukt ('+esc(e.message)+')</span>';
+        ['tb-ccy','tb-chg','tb-ev','tb-exp','tb-track'].forEach(function(id){ document.getElementById(id).innerHTML='<span class="tb-m" style="color:#f87171">fout: '+esc(e.message)+'</span>'; });
+      }
+    }
+    load(); setInterval(load,900000);
+    window.mccThesisReload = load;
   })();
   </script>
 </section>
@@ -7007,6 +7216,7 @@ window.RiskOverlays = (function(){
     <span id="hv-updated" class="hv-meta">laden…</span>
     <span id="hv-conv" style="margin-left:auto"></span>
   </div>
+  <div id="hv-arbiter" style="font-size:12px;margin:6px 0"></div>
   <div id="hv-headline" class="hv-headline">Laden uit house_view…</div>
 
   <div class="hv-sec">
@@ -7048,11 +7258,16 @@ window.RiskOverlays = (function(){
       var zz=Number(z)||0, pct=Math.max(0,Math.min(100,50+zz*22));
       var pos=zz>=0, col=kind==='inflation'?(pos?'var(--orange)':'var(--green)'):(pos?'var(--green)':'var(--red)');
       var fill=pos?('left:50%;width:'+(pct-50)+'%'):('right:50%;width:'+(50-pct)+'%');
-      var cs=Object.keys(comps||{}).map(function(k){return k+' '+(comps[k]>=0?'+':'')+comps[k];}).join('  ·  ');
+      // v66: alleen numerieke deel-z's; _inputs (waarde + releasedatum per invoer) apart tonen
+      var cs=Object.keys(comps||{}).filter(function(k){return k.charAt(0)!=='_' && typeof comps[k]==='number';})
+        .map(function(k){return k+' '+(comps[k]>=0?'+':'')+comps[k];}).join('  ·  ');
+      var inp=(comps&&comps._inputs)||null;
+      var inpTxt=inp?Object.keys(inp).map(function(k){return k+': '+inp[k];}).join('  ·  '):'';
       return '<div class="hv-gauge"><div class="hv-gauge-lab">'+(kind==='growth'?'Groei':'Inflatie')+'</div>'
         +'<div class="hv-gauge-val" style="color:'+col+'">'+(zz>=0?'+':'')+zz.toFixed(2)+' <span style="font-size:12px;color:var(--text3)">z · '+esc(label)+'</span></div>'
         +'<div class="hv-bar"><div class="hv-bar-mid"></div><div class="hv-bar-fill" style="'+fill+';background:'+col+'"></div></div>'
-        +'<div class="hv-comp">'+esc(cs)+'</div></div>';
+        +'<div class="hv-comp">'+esc(cs)+'</div>'
+        +(inpTxt?'<div class="hv-comp" style="opacity:.75">invoer: '+esc(inpTxt)+'</div>':'')+'</div>';
     }
     async function load(){
       try{
@@ -7064,6 +7279,7 @@ window.RiskOverlays = (function(){
         if(!h){ document.getElementById('hv-headline').textContent='Nog geen house view — draai gs_engine_writer.py.'; return; }
         document.getElementById('hv-updated').innerHTML = (h.asof ? ('bijgewerkt '+new Date(h.asof).toLocaleString('nl-NL')) : '') + mccCachedNote(hvCached);
         document.getElementById('hv-headline').innerHTML = esc(h.headline);
+        try{ if(window.__mccArbiter) document.getElementById('hv-arbiter').innerHTML = mccArbiterLine(window.__mccArbiter); }catch(_){}
         var cv=h.conviction||'—';
         document.getElementById('hv-conv').innerHTML='<span class="hv-badge" style="background:'+(convCol[cv]||'var(--text3)')+';color:#0f1420">CONVICTION: '+esc(cv).toUpperCase()+'</span>';
         // nowcast
@@ -10404,11 +10620,15 @@ document.addEventListener('DOMContentLoaded',function(){ setTimeout(function(){ 
 <script>
 /* gedeelde, defensieve fetch-helper (zelfde bron-resolutie als PAIR DOSSIER) */
 window.__dfetch = window.__dfetch || async function(path){
+  // v66: fouten niet meer stil slikken -> zichtbaar in de paneel-foutbalk (sleutel = tabel/RPC)
+  var tag = 'db:' + String(path).replace(/^\/rest\/v1\//,'').split('?')[0];
   try{
     var b=(typeof WORKER!=='undefined'?WORKER:(typeof SB_URL!=='undefined'?SB_URL:'https://moneymaker01.mghjklaassen.workers.dev'));
     var h=(typeof SB_HDR!=='undefined'?SB_HDR:(typeof SB_KEY!=='undefined'?{apikey:SB_KEY,Authorization:'Bearer '+SB_KEY}:{}));
-    var r=await fetch(b+path,{headers:h}); if(!r.ok)throw 0; return await r.json();
-  }catch(e){ return null; }
+    var r=await fetch(b+path,{headers:h}); if(!r.ok) throw new Error('HTTP '+r.status);
+    var j=await r.json(); try{ window.mccPanelOk && window.mccPanelOk(tag); }catch(_){}
+    return j;
+  }catch(e){ try{ window.mccPanelError && window.mccPanelError(tag, (e && e.message) || 'netwerkfout'); }catch(_){} return null; }
 };
 </script>
 
@@ -13974,7 +14194,8 @@ function _updateCostPill() {
   const dotCls = _sessionCostEUR > 2 ? "mcc-cost-high" : _sessionCostEUR > 0.5 ? "mcc-cost-med" : "mcc-cost-low";
   pill.innerHTML = `<span class="mcc-cost-dot ${dotCls}"></span>
     <span class="mcc-cost-main">€${sess}</span>
-    <span class="mcc-cost-sub">${calls} calls</span>`;
+    <span class="mcc-cost-sub">${calls} calls (browser)</span>`;
+  pill.title = "AI-calls vanuit deze browser-sessie. Totaal van alle bots/server-calls: header 'Kosten' (llm_cost_log).";
 }
 
 function _showCostDetail() {
@@ -13998,6 +14219,11 @@ function _showCostDetail() {
           <div class="mcc-cost-stat"><div class="mcc-cost-stat-lbl">Today</div><div class="mcc-cost-stat-val">€${today.toFixed(2)}</div></div>
           <div class="mcc-cost-stat"><div class="mcc-cost-stat-lbl">Last 30 days</div><div class="mcc-cost-stat-val">€${last30d.toFixed(2)}</div></div>
         </div>
+        ${(function(){ var u=(window.__mccUsage||{}).ai; if(!u) return '';
+          return '<div class="mcc-cost-log-title">Server · alle bots (ai_router, llm_cost_log)</div><div class="mcc-cost-stats">'
+            +'<div class="mcc-cost-stat"><div class="mcc-cost-stat-lbl">Vandaag</div><div class="mcc-cost-stat-val">€'+Number(u.today.eur).toFixed(2)+'</div><div class="mcc-cost-stat-sub">'+u.today.calls+' calls</div></div>'
+            +'<div class="mcc-cost-stat"><div class="mcc-cost-stat-lbl">7 dagen</div><div class="mcc-cost-stat-val">€'+Number(u.d7.eur).toFixed(2)+'</div><div class="mcc-cost-stat-sub">'+u.d7.calls+' calls</div></div>'
+            +'<div class="mcc-cost-stat"><div class="mcc-cost-stat-lbl">30 dagen</div><div class="mcc-cost-stat-val">€'+Number(u.d30.eur).toFixed(2)+'</div><div class="mcc-cost-stat-sub">'+u.d30.calls+' calls</div></div></div>'; })()}
         <div class="mcc-cost-log-title">Recent calls</div>
         <div class="mcc-cost-log">${
           recent.length ? recent.map(r => `
@@ -25071,15 +25297,34 @@ function dhRenderG8YieldCurves(fred) {
   const wrap = document.getElementById("g8MatrixRows");
   if (!wrap) return;
   if (!rows.length) {
-    wrap.innerHTML = '<div style="padding:24px;text-align:center;color:#2d4060;font-size:12px">Geen yield data — klik REFRESH ALL</div>';
+    wrap.innerHTML = '<div style="padding:24px;text-align:center;color:#2d4060;font-size:12px">Geen yield data (geen live bron en geen referentie) — klik REFRESH ALL</div>';
     return;
   }
+  // v66: dagverandering 2Y/10Y uit yields_live (laatste 2 dagen); reden tonen als dat niet kan
+  if (window.__ylDelta === undefined) {
+    window.__ylDelta = null;
+    window.__dfetch('/rest/v1/yields_live?select=*&order=fetch_date.desc&limit=2').then(r => {
+      if (!Array.isArray(r) || r.length < 2) { window.__ylDelta = {_err: Array.isArray(r) ? "geen vorige dag in yields_live" : "yields_live niet bereikbaar"}; }
+      else { window.__ylDelta = {_d0: String(r[0].fetch_date).slice(0,10), _d1: String(r[1].fetch_date).slice(0,10), r0: r[0], r1: r[1]}; }
+      try { dhRenderG8YieldCurves(fred); } catch(_) {}
+    });
+  }
+  const _dl = (lc, tenor) => {
+    const D = window.__ylDelta;
+    if (!D) return '<span style="font-size:8px;color:#5a6a80;display:block">Δ1d laden…</span>';
+    if (D._err) return '<span title="'+D._err+'" style="font-size:8px;color:#5a6a80;display:block">Δ1d n/b</span>';
+    const k = (lc==="usd"?"us":lc)+"_"+tenor, a = parseFloat(D.r0[k]), b = parseFloat(D.r1[k]);
+    if (isNaN(a) || isNaN(b)) return '<span title="geen '+k+' in yields_live" style="font-size:8px;color:#5a6a80;display:block">Δ1d n/b</span>';
+    const bp = Math.round((a-b)*100);
+    if (bp === 0) return '<span title="'+D._d1+' → '+D._d0+': identiek — bron mogelijk niet ververst" style="font-size:8px;color:#5a6a80;display:block">Δ1d 0 (ongewijzigd?)</span>';
+    return '<span title="yields_live '+D._d1+' → '+D._d0+'" style="font-size:8px;display:block;color:'+(bp>0?'#f87171':'#34d399')+'">Δ1d '+(bp>0?'+':'')+bp+'bp</span>';
+  };
 
   const allVals = rows.flatMap(r=>[r.y2,r.y10,r.policy].filter(v=>v!=null));
   const MAX_Y   = Math.max(6, ...allVals) * 1.12;
   const pct     = v => v!=null ? Math.min(100,(v/MAX_Y*100)).toFixed(1)+"%" : "0%";
   const fmt     = v => v!=null ? v.toFixed(2)+"%" : "\u2014";
-  const sgn     = v => v==null?"\u2014":(v>0?"+":"")+v.toFixed(2)+"%";
+  const sgn     = v => v==null?'<span title="niet te berekenen: invoer ontbreekt (2Y/10Y/policy/CPI)">n/b</span>':(v>0?"+":"")+v.toFixed(2)+"%";
 
   const carryCol = i => i===0?"#34d399":i===1?"#6ee7b7":i===rows.length-1?"#ef4444":i===rows.length-2?"#f87171":"#94a3b8";
   const tpCol    = v => v==null?"#3d5070":v>0.5?"#34d399":v>0?"#6ee7b7":v>-0.3?"#f97316":"#ef4444";
@@ -25108,8 +25353,8 @@ function dhRenderG8YieldCurves(fred) {
       '<span style="font-size:11px;font-weight:700;color:'+cc+';margin-left:3px">'+r.code+'</span>'+
       (r.isEst?'<div style="font-size:7px;color:#1a3a5a;letter-spacing:.5px;margin-top:1px">~ EST</div>':'')+'</div>'+
       barTrack+
-      '<div style="text-align:right;font-size:11px;font-weight:700;color:'+cc+'">'+fmt(r.y2)+(typeof mccSrcLabel==="function"?mccSrcLabel(r.i2):'')+'</div>'+
-      '<div style="text-align:right;font-size:11px;font-weight:600;color:#3d6a9c">'+fmt(r.y10)+(typeof mccSrcLabel==="function"?mccSrcLabel(r.i10):'')+'</div>'+
+      '<div style="text-align:right;font-size:11px;font-weight:700;color:'+cc+'">'+fmt(r.y2)+(typeof mccSrcLabel==="function"?mccSrcLabel(r.i2):'')+_dl(r.lc,"2y")+'</div>'+
+      '<div style="text-align:right;font-size:11px;font-weight:600;color:#3d6a9c">'+fmt(r.y10)+(typeof mccSrcLabel==="function"?mccSrcLabel(r.i10):'')+_dl(r.lc,"10y")+'</div>'+
       '<div style="text-align:right;font-size:11px;font-weight:600;color:'+tpCol(r.termPrem)+'">'+sgn(r.termPrem)+'</div>'+
       '<div style="text-align:right;font-size:11px;font-weight:600;color:'+ryCol(r.realYield)+'">'+sgn(r.realYield)+'</div>'+
       '<div style="text-align:right;font-size:11px;font-weight:600;color:'+s10Col(r.s2s10)+'">'+sgn(r.s2s10)+'</div>'+
@@ -31337,7 +31582,7 @@ try {
       {label:"10Y",val:y.US10Y?.value}, {label:"30Y",val:y.US30Y?.value},
     ].filter(p=>p.val!=null);
     const W=400,H=140,PX=30,PY=25;
-    if(pts.length<2){ svg.innerHTML=""; return; }
+    if(pts.length<2){ svg.innerHTML=`<text x="200" y="70" text-anchor="middle" fill="#5a6a80" font-size="11">Geen curve: ${pts.length}/4 looptijden in de feed (US2Y/5Y/10Y/30Y)</text>`; return; }
     const mn = Math.min(...pts.map(p=>p.val))-0.2;
     const mx = Math.max(...pts.map(p=>p.val))+0.2;
     const xF = i => PX+(i/(pts.length-1))*(W-2*PX);
@@ -31352,7 +31597,12 @@ try {
       labels += `<text class="cp-curve-axis-label" x="${cx}" y="${H-8}" text-anchor="middle">${p.label}</text>`;
     });
     svg.innerHTML = `<defs><linearGradient id="cp-curve-gradient" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#b08d57" stop-opacity="0.4"/><stop offset="100%" stop-color="#b08d57" stop-opacity="0"/></linearGradient></defs><path class="cp-curve-area" d="${areaD}"/><path class="cp-curve-line" d="${pathD}"/>${dots}${labels}`;
-    $("cp-yield-date").textContent = y.US10Y?.date || "—";
+    // v66: datum + vertraging zichtbaar (FRED H.15 loopt >=1 werkdag achter)
+    (function(){ const d = y.US10Y?.date; const el = $("cp-yield-date"); if(!el) return;
+      if(!d){ el.textContent = "datum onbekend"; return; }
+      const lag = Math.round((Date.now() - new Date(d)) / 864e5);
+      el.textContent = d + " (FRED" + (lag >= 1 ? ", T+" + lag + "d" : "") + ")";
+      el.title = "bron: FRED DGS-reeksen via worker unified-feed; actuelere US10Y: yields_live (zie Data Hub)"; })();
     const s210=y.US_2s10s?.value, s1030=y.US_10s30s?.value, real=y.REAL10Y?.value;
     const e=$("cp-s-2s10s"); e.textContent = s210!=null ? (s210>=0?"+":"")+s210.toFixed(2) : "—"; e.classList.toggle("cp-inverted", s210!=null && s210<0);
     $("cp-s-10s30s").textContent = s1030!=null ? (s1030>=0?"+":"")+s1030.toFixed(2) : "—";
@@ -31422,9 +31672,11 @@ try {
       renderMini("cp-equity-grid", EQUITIES, j.equities||{}, true);
       renderCredit(j);
       if(dot){ dot.className="cp-live-dot"; txt.textContent="Live"; }
+      try{ window.mccPanelOk && window.mccPanelOk("worker:feed"); }catch(_){}
     }catch(e){
       if(dot){ dot.className="cp-live-dot cp-error"; txt.textContent="Offline"; }
       console.error("[CP] feed:", e);
+      try{ window.mccPanelError && window.mccPanelError("worker:feed", (e&&e.message)||"fout"); }catch(_){}
       throw e;
     }
   }
@@ -31438,9 +31690,11 @@ try {
       const j = await r.json();
       state.news = j; state.lastNewsOk = Date.now();
       renderNews(); renderTicker(j.items||[]);
+      try{ window.mccPanelOk && window.mccPanelOk("worker:news"); }catch(_){}
     }catch(e){
       const l = $("cp-news-list");
-      if(l) l.innerHTML='<div class="cp-news-empty">Unable to load headlines</div>';
+      if(l) l.innerHTML='<div class="cp-news-empty">Headlines laden mislukt ('+String((e&&e.message)||'fout').replace(/</g,'&lt;')+')</div>';
+      try{ window.mccPanelError && window.mccPanelError("worker:news", (e&&e.message)||"fout"); }catch(_){}
       console.error("[CP] news:", e);
       throw e;
     }
@@ -31647,7 +31901,17 @@ try {
     if(note){
       const diverge = nodes.slice(1).filter(n => n.deltaDir !== 0 && n.expected !== 0 && n.deltaDir !== n.expected).length;
       const confirm = nodes.slice(1).filter(n => n.deltaDir !== 0 && n.expected !== 0 && n.deltaDir === n.expected).length;
-      if(diverge >= 2){
+      // v66: lege staat met reden i.p.v. '0 confirming, 0 diverging'
+      const nodesWithMove = nodes.slice(1).filter(n => n.deltaDir !== 0).length;
+      if(leadDir === 0){
+        note.innerHTML = realDelta == null
+          ? `Keten niet te beoordelen — geen vorige REAL10Y-waarde in de feed (real yield Δ onbekend)`
+          : `Real yields vlak (Δ ${realDelta.toFixed(3)}) — geen leidende richting, keten niet te beoordelen`;
+        note.style.color = "var(--cp-ink-2)";
+      } else if(nodesWithMove === 0){
+        note.innerHTML = `Keten niet te beoordelen — geen bruikbare 1d-moves voor DXY/grondstoffen/aandelen/credit (stale of implausibel in de feed)`;
+        note.style.color = "var(--cp-ink-2)";
+      } else if(diverge >= 2){
         note.innerHTML = `⚠ ${diverge} of 4 links <em>diverging</em> — transmission breaking down, regime potentially shifting`;
         note.style.color = "var(--cp-red)";
       } else if(confirm >= 3){
@@ -31921,26 +32185,35 @@ try {
       { name: "Commodities", src: feed.commodities || {}, order: ["WTI","BRENT","GOLD","SILVER","COPPER","NATGAS"], fmt: v => v.toFixed(2) },
       { name: "Equities",    src: feed.equities    || {}, order: ["SPX","NDX","DJI","RUT","FTSE","DAX","NIKKEI","HSI","VIX"], fmt: v => v.toFixed(v > 1000 ? 0 : 2) },
       { name: "Crypto",      src: feed.crypto      || {}, order: ["BTC","ETH"], fmt: v => v.toFixed(0) },
-      { name: "Macro",       src: feed.macro       || {}, order: ["VIX_DAILY","HY_OAS","IG_OAS","SOFR"], fmt: v => v.toFixed(2)+"%" },
+      // v66: VIX is een index-niveau, geen percentage (was "15.27%"); VIX_DAILY = FRED-slot (vertraagd)
+      { name: "Macro",       src: feed.macro       || {}, order: ["VIX_DAILY","HY_OAS","IG_OAS","SOFR"], fmt: (v,k) => k==="VIX_DAILY" ? v.toFixed(2) : v.toFixed(2)+"%" },
     ];
+    const _fts = feed.ts || feed.updated_at || feed.asof || null;
+    const _srcOf = (g, k) => g.name==="Macro" ? "FRED (via worker)" : g.name==="Yields" ? "worker unified-feed (FRED/TV)" : "worker unified-feed";
     let html = "";
     groups.forEach(g => {
       const cells = g.order.map(k => {
-        const d = g.src[k];
+        // v66: aandelen = zelfde bron als de pills (future buiten de cash-sessie), met SPOT/FUT-label
+        const isEqFut = g.name==="Equities" && typeof EQ_FUTURES!=="undefined" && EQ_FUTURES[k];
+        const d = isEqFut ? equityQuote(k, g.src) : g.src[k];
         if(!d || d.value == null) return "";
         const pct = d.change_pct ?? (d.prev != null ? ((d.value - d.prev)/d.prev)*100 : null);
         const cls = cpHmCellClass(pct);
         const pctTxt = pct != null ? `${pct>=0?"+":""}${pct.toFixed(2)}%` : "—";
         const valTxt = g.fmt(d.value, k);
-        return `<div class="cp-hm-cell ${cls}" title="${k}: ${valTxt} (${pctTxt})">
-          <span class="cp-hm-sym">${k.replace(/_DAILY$/,"").replace(/_OAS$/," OAS")}</span>
+        const kind = isEqFut ? (d.tag==="FUT" ? "FUT" : "SPOT") : "";
+        const ts = d.date || d.ts || _fts;
+        const tip = `${k}: ${valTxt} (${pctTxt}) · ${kind ? (kind==="FUT"?"E-mini future (cash dicht)":"cash-index (spot)")+" · " : ""}bron: ${_srcOf(g,k)}${ts?` · ${String(ts).replace("T"," ").slice(0,16)}`:""}`;
+        return `<div class="cp-hm-cell ${cls}" title="${tip.replace(/"/g,"&quot;")}">
+          <span class="cp-hm-sym">${k==="VIX_DAILY"?"VIX (FRED slot)":k.replace(/_DAILY$/,"").replace(/_OAS$/," OAS")}${kind?` <span class="cp-fut-tag">${kind}</span>`:""}</span>
           <span class="cp-hm-val">${valTxt}</span>
           <span class="cp-hm-pct ${pct>0?"cp-up":pct<0?"cp-down":"cp-flat"}">${pctTxt}</span>
         </div>`;
       }).filter(Boolean).join("");
       if(cells) html += `<div class="cp-hm-group">${g.name}</div><div style="display:contents">${cells}</div>`;
     });
-    el.innerHTML = `<div class="cp-heatmap-grid">${html}</div>`;
+    el.innerHTML = `<div class="cp-heatmap-grid">${html}</div>`
+      + `<div style="font-size:9px;color:#5a6a80;margin-top:4px">bron: worker unified-feed${_fts?` · stand ${String(_fts).replace("T"," ").slice(0,16)}`:""} · aandelen: SPOT = cash-index, FUT = E-mini buiten cash-sessie · hover per tegel voor bron + tijd</div>`;
   }
 
   /* ═══ v26: ECONOMIC CALENDAR ═══ */
@@ -31953,25 +32226,47 @@ try {
       if(!r.ok) throw new Error("HTTP " + r.status);
       const j = await r.json();
       cpCalState.events = j.events || [];
+      cpCalState.src = "worker /api/calendar";
+      // v66: worker leeg -> terugval op Supabase macro_events_calendar (ForexFactory-week)
+      if (!cpCalState.events.length) await cpCalFromSupabase();
       cpRenderCalendar();
+      try{ window.mccPanelOk && window.mccPanelOk("worker:calendar"); }catch(_){}
     } catch(e){
       console.error("[CP cal]", e);
+      try{ window.mccPanelError && window.mccPanelError("worker:calendar", ((e&&e.message)||"fout")+" (terugval Supabase-kalender geprobeerd)"); }catch(_){}
+      if (await cpCalFromSupabase()) { cpRenderCalendar(); return; }
       const body = $("cp-cal-body");
-      if(body) body.innerHTML = '<div class="cp-news-empty" style="padding:20px 0;text-align:center">Calendar unavailable</div>';
+      if(body) body.innerHTML = '<div class="cp-news-empty" style="padding:20px 0;text-align:center">Kalender niet beschikbaar: worker ('+String((e&&e.message)||'fout').replace(/</g,'&lt;')+') en Supabase-terugval faalden</div>';
       throw e;
     }
+  }
+  async function cpCalFromSupabase(){
+    const t0 = new Date().toISOString().slice(0,10), t1 = new Date(Date.now()+10*864e5).toISOString().slice(0,10);
+    const rows = await window.__dfetch('/rest/v1/macro_events_calendar?select=event_datetime,event_currency,event_name,event_impact,expected_value,previous_value,actual_value&source=eq.ff_thisweek&event_date=gte.'+t0+'&event_date=lte.'+t1+'&order=event_datetime.asc&limit=300');
+    if (!Array.isArray(rows) || !rows.length) { cpCalState.srcErr = Array.isArray(rows) ? "Supabase-kalender: 0 events komende 10 dagen" : "Supabase-kalender niet bereikbaar"; return false; }
+    cpCalState.events = rows.map(r => { const d = new Date(r.event_datetime);
+      return { date: [String(d.getUTCMonth()+1).padStart(2,"0"), String(d.getUTCDate()).padStart(2,"0"), d.getUTCFullYear()].join("-"),
+               time: d.toISOString().slice(11,16)+" UTC", country: r.event_currency, title: r.event_name, impact: r.event_impact || "Low",
+               previous: r.previous_value, forecast: r.expected_value, actual: r.actual_value }; });
+    cpCalState.src = "Supabase macro_events_calendar (ForexFactory)";
+    return true;
   }
   function cpRenderCalendar(){
     const body = $("cp-cal-body");
     if(!body) return;
     let events = cpCalState.events;
+    const total = (events || []).length;
     // Apply filter
     const f = cpCalState.filter;
     if(f === "high")        events = events.filter(e => /high/i.test(e.impact));
     else if(f === "medium") events = events.filter(e => /high|medium/i.test(e.impact));
     else if(f === "usd")    events = events.filter(e => /USD/i.test(e.country));
     // all passes through
-    if(!events.length){ body.innerHTML = '<div class="cp-news-empty" style="padding:20px 0;text-align:center">No events match this filter</div>'; return; }
+    if(!events.length){
+      // v66: reden tonen — bron leeg / fout vs filter verbergt alles
+      const why = !total ? ('Geen events: ' + (cpCalState.srcErr || ((cpCalState.src||'bron') + ' gaf 0 events')))
+                         : ('Filter "' + f + '" verbergt alle ' + total + ' events — kies "All"');
+      body.innerHTML = '<div class="cp-news-empty" style="padding:20px 0;text-align:center">'+why+'</div>'; return; }
     // Group by date
     const groups = {};
     events.forEach(e => {
@@ -32006,29 +32301,47 @@ try {
         </div>`;
       });
     });
-    body.innerHTML = html;
+    body.innerHTML = html + '<div style="font-size:9px;color:#5a6a80;margin-top:6px">bron: '+(cpCalState.src||'worker /api/calendar')+' · '+total+' events</div>';
   }
 
   /* ═══ v26: COT POSITIONING ═══ */
   async function cpFetchCOT(opts){
     opts = opts || {};
+    // v66: zelfde bron als data-health (Supabase macro_scraped cftc_*), met rapportdatum +
+    // crowding-percentiel; de worker /api/cot is alleen nog terugval (gaf 'No COT data').
+    try{
+      const ms = await window.__dfetch('/rest/v1/macro_scraped?select=indicator,value,release_date&indicator=like.cftc_*');
+      if (Array.isArray(ms) && ms.length) {
+        const by = {}; let rep = null;
+        ms.forEach(r => { const m = /^cftc_([a-z]{3})_(net_spec|pct_52w|pct_5y)$/.exec(r.indicator||""); if(!m) return;
+          const c = m[1].toUpperCase(); (by[c] = by[c] || {code:c})[m[2]] = r.value != null ? +r.value : null;
+          if (m[2]==="net_spec" && r.release_date && (!rep || r.release_date > rep)) rep = r.release_date; });
+        const rows = Object.values(by).filter(r => r.net_spec != null)
+          .map(r => ({code:r.code, net:r.net_spec, pct52:r.pct_52w, pct5y:r.pct_5y}))
+          .sort((a,b) => (b.pct52??-1) - (a.pct52??-1));
+        if (rows.length) { cpRenderCOT(rows, {date: rep, src: "CFTC via Supabase (macro_scraped)"}); return; }
+      }
+    } catch(_) {}
     const url = BASE + "/api/cot" + (opts.fresh ? "?fresh=1" : "");
     try{
       const r = await fetch(url, { cache: "no-cache" });
       if(!r.ok) throw new Error("HTTP " + r.status);
       const j = await r.json();
       cpRenderCOT(j.currencies || []);
+      try{ window.mccPanelOk && window.mccPanelOk("worker:cot"); }catch(_){}
     } catch(e){
       console.error("[CP cot]", e);
+      try{ window.mccPanelError && window.mccPanelError("worker:cot", (e&&e.message)||"fout"); }catch(_){}
       const body = $("cp-cot-body");
-      if(body) body.innerHTML = '<div class="cp-news-empty" style="padding:14px 0">COT data unavailable</div>';
+      if(body) body.innerHTML = '<div class="cp-news-empty" style="padding:14px 0">COT niet beschikbaar: Supabase (cftc_*) en worker ('+String((e&&e.message)||'fout').replace(/</g,'&lt;')+') faalden</div>';
       throw e;
     }
   }
-  function cpRenderCOT(rows){
+  function cpRenderCOT(rows, meta){
     const body = $("cp-cot-body");
     if(!body) return;
-    if(!rows.length){ body.innerHTML = '<div class="cp-news-empty" style="padding:14px 0">No COT data</div>'; return; }
+    meta = meta || {};
+    if(!rows.length){ body.innerHTML = '<div class="cp-news-empty" style="padding:14px 0">Geen COT-data: bron gaf 0 valuta terug ('+(meta.src||'worker /api/cot')+')</div>'; return; }
     // Scale bars: find max abs net for normalization
     const maxAbs = Math.max(...rows.map(r => Math.abs(r.net || 0)), 1);
     body.innerHTML = `<div class="cp-cot-list">${rows.map(r => {
@@ -32045,9 +32358,10 @@ try {
           <div class="cp-cot-bar-center"></div>
           <div class="cp-cot-bar ${barCls}" style="${barStyle}"></div>
         </div>
-        <div class="cp-cot-net ${netCls}">${netStr}<span class="cp-cot-chg">${chgStr}</span></div>
+        <div class="cp-cot-net ${netCls}">${netStr}<span class="cp-cot-chg">${chgStr}</span>${r.pct52!=null?`<span class="cp-cot-chg" title="crowding: percentiel netto-positie in 52w${r.pct5y!=null?` · 5j: ${r.pct5y.toFixed(0)}e`:''}" style="${r.pct52>=90||r.pct52<=10?'color:#f59e0b;font-weight:700':''}">${r.pct52.toFixed(0)}e pct${r.pct52>=90?' · crowded long':r.pct52<=10?' · crowded short':''}</span>`:''}</div>
       </div>`;
-    }).join("")}</div>`;
+    }).join("")}</div>`
+    + `<div style="font-size:9px;color:#5a6a80;margin-top:6px">CFTC-rapport ${meta.date || '?'} · ${meta.src || 'worker /api/cot'} · percentiel = netto spec-positie t.o.v. 52 weken</div>`;
   }
 
   /* ═══ v26: FED STATE ═══ */
@@ -32063,10 +32377,30 @@ try {
     const sofr = m.SOFR?.value;
     const us2y = y.US2Y?.value;
 
-    // Target range: approximate from reference (Fed Mar 2026 = 4.50)
-    const ref = 4.50;
+    // v66: range + marktverwachting LIVE (was: hardgecodeerd 4.25–4.50 en omgekeerde pricing-tekst)
+    //   range   = macro_scraped.usd_policy (FRED DFEDTARU, bovengrens) − 0.25
+    //   pricing = v_cb_rate_expectation (forward_rates → bp ingeprijsd over 1 jaar)
     const rangeEl = $("cp-fed-range");
-    if(rangeEl) rangeEl.textContent = `${(ref-0.25).toFixed(2)}–${(ref).toFixed(2)}%`;
+    (async () => {
+      const ms = await window.__dfetch('/rest/v1/macro_scraped?select=value,release_date&indicator=eq.usd_policy&limit=1');
+      const up = ms?.[0]?.value != null ? +ms[0].value : null, rd = ms?.[0]?.release_date || null;
+      const age = rd ? (Date.now() - new Date(rd)) / 864e5 : null;
+      if (rangeEl) {
+        rangeEl.textContent = up != null ? `${(up-0.25).toFixed(2)}–${up.toFixed(2)}%` : "— (geen live bron)";
+        rangeEl.title = up != null ? `FRED DFEDTARU · stand ${rd}` : "macro_scraped.usd_policy niet bereikbaar";
+        if (up != null && age > 10) rangeEl.textContent += ` (verouderd ${rd})`;
+      }
+      const ex = await window.__dfetch('/rest/v1/v_cb_rate_expectation?ccy=eq.USD&select=priced_1y_bps,next_move_1y');
+      const pb = ex?.[0]?.priced_1y_bps;
+      const subEl2 = $("cp-fed-sub");
+      if (subEl2) {
+        subEl2.textContent = pb == null ? "pricing: geen live data (v_cb_rate_expectation)"
+          : pb > 10 ? `market pricing hikes (+${Math.round(pb)}bp in 1j)`
+          : pb < -10 ? `market pricing cuts (${Math.round(pb)}bp in 1j)` : "market in lijn met huidige stand (±10bp)";
+        subEl2.title = "bron: v_cb_rate_expectation (forward_rates)";
+        subEl2.dataset.live = "1";
+      }
+    })();
 
     $("cp-fed-dff").textContent  = dff  != null ? dff.toFixed(2)+"%" : "—";
     $("cp-fed-sofr").textContent = sofr != null ? sofr.toFixed(2)+"%" : "—";
@@ -32091,9 +32425,10 @@ try {
 
     // Fed stance narrative
     const subEl = $("cp-fed-sub");
-    if(subEl){
-      if(spread > 0.3)      subEl.textContent = "market pricing further cuts";
-      else if(spread < -0.3) subEl.textContent = "market pricing more hikes";
+    if(subEl && !subEl.dataset.live){
+      // fallback-proxy (2Y − DFF): 2Y BOVEN funds = markt prijst VERHOGINGEN (was omgekeerd)
+      if(spread > 0.3)      subEl.textContent = "2Y > funds: proxy wijst op verhogingen";
+      else if(spread < -0.3) subEl.textContent = "2Y < funds: proxy wijst op verlagingen";
       else                   subEl.textContent = "market aligned with current stance";
     }
   }
@@ -32271,6 +32606,9 @@ try {
         typeof window.mccRegimeReload === "function" ? window.mccRegimeReload() : null,
         typeof window.mccRelationsReload === "function" ? window.mccRelationsReload() : null,
         typeof window.mccHouseViewReload === "function" ? window.mccHouseViewReload() : null ]) },
+    { key: "thesis",   label: "Thesis-board · Kosten", fn: () => Promise.all([
+        typeof window.mccThesisReload === "function" ? window.mccThesisReload() : null,
+        typeof window.mccUsageReload === "function" ? window.mccUsageReload() : null ]) },
   ];
 
   async function cpRefreshAll(){
