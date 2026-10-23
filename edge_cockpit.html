@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta name="robots" content="noindex, nofollow">
+<meta name="googlebot" content="noindex, nofollow">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>MCC Edge Cockpit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  :root{
+    --ground:#eef1f5;--panel:#fff;--panel-2:#f6f8fb;--line:#dbe1ea;
+    --ink:#111823;--muted:#5a6675;--faint:#8a95a4;
+    --accent:#0d7d88;--accent-soft:#0d7d8814;
+    --good:#1a8f52;--good-bg:#1a8f5216;--warn:#b9741f;--warn-bg:#b9741f18;--bad:#c9433b;--bad-bg:#c9433b14;
+    --shadow:0 1px 2px rgba(16,24,40,.05),0 6px 20px rgba(16,24,40,.06);
+    --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;--sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --ground:#0c1016;--panel:#131a24;--panel-2:#0f151d;--line:#232e3c;
+    --ink:#e6edf5;--muted:#93a0b1;--faint:#5f6d7e;
+    --accent:#38cad7;--accent-soft:#38cad71f;
+    --good:#3ecb7d;--good-bg:#3ecb7d1c;--warn:#e2a13c;--warn-bg:#e2a13c1e;--bad:#f0685e;--bad-bg:#f0685e18;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 26px rgba(0,0,0,.35);
+  }}
+  :root[data-theme="dark"]{
+    --ground:#0c1016;--panel:#131a24;--panel-2:#0f151d;--line:#232e3c;
+    --ink:#e6edf5;--muted:#93a0b1;--faint:#5f6d7e;
+    --accent:#38cad7;--accent-soft:#38cad71f;
+    --good:#3ecb7d;--good-bg:#3ecb7d1c;--warn:#e2a13c;--warn-bg:#e2a13c1e;--bad:#f0685e;--bad-bg:#f0685e18;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 26px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;
+    -webkit-font-smoothing:antialiased;padding:20px 15px calc(56px + env(safe-area-inset-bottom))}
+  .wrap{max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:2px}
+  .brand{display:flex;flex-direction:column;gap:3px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:600}
+  h1{font-size:25px;line-height:1.05;margin:0;font-weight:700;letter-spacing:-.02em}
+  .live{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 0 0 var(--good);animation:pulse 2.4s infinite}
+  .dot.err{background:var(--bad);animation:none}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--good) 55%,transparent)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+  @media (prefers-reduced-motion:reduce){.dot{animation:none}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:15px;box-shadow:var(--shadow)}
+  .card h2{font-size:11.5px;font-family:var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 12px;font-weight:600}
+  .statgrid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:11px;overflow:hidden}
+  .statgrid div{background:var(--panel);padding:12px 13px;display:flex;flex-direction:column;gap:3px}
+  .lab{font-family:var(--mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)}
+  .val{font-family:var(--mono);font-size:21px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1}
+  .val.g{color:var(--good)}.val.b{color:var(--bad)}.val.w{color:var(--warn)}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
+  th{font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);font-weight:600}
+  td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;font-weight:600}
+  tr:last-child td{border-bottom:none}
+  td.mono{font-family:var(--mono);font-size:12.5px}
+  .row-good td{background:var(--good-bg)}.row-good td.num{color:var(--good)}
+  .row-bad td{background:var(--bad-bg)}.row-bad td.num{color:var(--bad)}
+  .verdict{margin-top:11px;font-size:13px;display:flex;gap:9px;align-items:flex-start}
+  .verdict .chip{flex:none}
+  .chip{font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;padding:2.5px 8px;border-radius:20px;border:1px solid;white-space:nowrap}
+  .chip.good{color:var(--good);background:var(--good-bg);border-color:color-mix(in srgb,var(--good) 40%,transparent)}
+  .chip.warn{color:var(--warn);background:var(--warn-bg);border-color:color-mix(in srgb,var(--warn) 40%,transparent)}
+  .chip.bad{color:var(--bad);background:var(--bad-bg);border-color:color-mix(in srgb,var(--bad) 40%,transparent)}
+  .chip.neu{color:var(--muted);background:var(--panel-2);border-color:var(--line)}
+  .skel{color:var(--faint);font-family:var(--mono);font-size:13px}
+  .foot{color:var(--muted);font-size:12px;text-align:center;line-height:1.6;padding-top:2px}
+  .foot a{color:var(--accent);text-decoration:none}
+  .banner{display:none;font-size:12.5px;padding:9px 12px;border-radius:10px;background:var(--warn-bg);border:1px solid color-mix(in srgb,var(--warn) 34%,var(--line));color:var(--ink)}
+  .banner.show{display:block}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="eyebrow">Macro-FX · forward-bewijs</div>
+      <h1>Edge Cockpit</h1>
+    </div>
+    <div class="live"><span class="dot" id="dot"></span><span id="updated">verbinden…</span></div>
+  </header>
+
+  <div class="banner" id="banner"></div>
+
+  <section class="card">
+    <h2>Stand van zaken</h2>
+    <div class="statgrid" id="stats">
+      <div><span class="lab">Hit-rate</span><span class="val skel">…</span></div>
+      <div><span class="lab">Paper-R</span><span class="val skel">…</span></div>
+      <div><span class="lab">ROI</span><span class="val skel">…</span></div>
+      <div><span class="lab">Signalen</span><span class="val skel">…</span></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Conviction — voorspelt 't de hit-rate?</h2>
+    <table><thead><tr><th>Bucket</th><th style="text-align:right">n</th><th style="text-align:right">Hit</th><th style="text-align:right">avg R</th></tr></thead>
+      <tbody id="conv"><tr><td class="skel" colspan="4">laden…</td></tr></tbody></table>
+    <div class="verdict" id="conv-verdict"></div>
+  </section>
+
+  <section class="card">
+    <h2>Nieuwe edges — market_surprise &amp; confluence</h2>
+    <table><thead><tr><th>Bron / soort</th><th style="text-align:right">gescoord</th><th style="text-align:right">Hit 20d</th><th style="text-align:right">avg ret</th></tr></thead>
+      <tbody id="surp"><tr><td class="skel" colspan="4">laden…</td></tr></tbody></table>
+    <div class="verdict" id="surp-verdict"></div>
+  </section>
+
+  <section class="card">
+    <h2>Edge per bron</h2>
+    <table><thead><tr><th>Bron</th><th style="text-align:right">n</th><th style="text-align:right">Hit</th><th style="text-align:right">tot R</th></tr></thead>
+      <tbody id="src"><tr><td class="skel" colspan="4">laden…</td></tr></tbody></table>
+  </section>
+
+  <div class="foot">
+    Handleiding: <a href="EDGE_PLAYBOOK.md">EDGE_PLAYBOOK.md</a> · een cockpit is een display, geen edge —<br>
+    size gelijk tot de bewijs-views groen zijn. Ververst elke 60s.
+  </div>
+</div>
+
+<script>
+"use strict";
+var SB="https://xpspejqsqerixsfqsegr.supabase.co";
+var KEY="sb_publishable_tg1-demI6OJJKcnSt9tCXA_MYGqYC4h";
+var MIN_N=20; // onder deze n: onvoldoende bewijs
+
+function q(view,params){
+  return fetch(SB+"/rest/v1/"+view+(params?("?"+params):""),
+    {headers:{apikey:KEY,Authorization:"Bearer "+KEY}})
+    .then(function(r){ if(!r.ok) throw new Error(view+" "+r.status); return r.json(); });
+}
+function fmt(v,suf,dec){ if(v===null||v===undefined||v==="") return "—";
+  var n=Number(v); if(isNaN(n)) return String(v);
+  return n.toFixed(dec==null?1:dec)+(suf||""); }
+function esc(s){ return String(s==null?"":s).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];}); }
+function chip(cls,txt){ return '<span class="chip '+cls+'">'+txt+'</span>'; }
+
+function render(intel,roi,conv,surp,src){
+  // ── stats
+  var hit=intel&&intel[0]?intel[0].overall_hit_pct:null;
+  var paper=intel&&intel[0]?intel[0].realized_paper_r:null;
+  var rpe=roi&&roi[0]?roi[0].realized_r_per_eur:null;
+  var sig=intel&&intel[0]?intel[0].signals_scored:null;
+  document.getElementById("stats").innerHTML=
+    stat("Hit-rate",fmt(hit,"%"),hit!=null&&hit>=50?"g":(hit!=null?"b":""))+
+    stat("Paper-R",fmt(paper," R"),paper!=null&&paper>0?"g":(paper!=null&&paper<0?"b":""))+
+    stat("ROI",rpe!=null?fmt(rpe," R/€"):"—",rpe!=null&&rpe>0?"g":"")+
+    stat("Signalen",sig!=null?String(sig):"—","");
+  // ── conviction (sorteer op bucket-naam, hoog→laag zoals de view)
+  var cb=document.getElementById("conv"); cb.innerHTML="";
+  var order=conv.slice().sort(function(a,b){return String(a.conv_bucket).localeCompare(String(b.conv_bucket));});
+  var lowHit=null,highHit=null;
+  order.forEach(function(r){
+    var h=Number(r.hit_pct);
+    if(lowHit===null) lowHit=h; highHit=h; // lowest bucket first (1·), highest last (4·)
+    var cls=h>=50?"row-good":(h<35?"row-bad":"");
+    cb.insertAdjacentHTML("beforeend","<tr class='"+cls+"'><td class='mono'>"+esc(r.conv_bucket)+
+      "</td><td class='num'>"+esc(r.n)+"</td><td class='num'>"+fmt(r.hit_pct,"%")+
+      "</td><td class='num'>"+fmt(r.avg_r_20d,"",2)+"</td></tr>");
+  });
+  var cv=document.getElementById("conv-verdict");
+  if(order.length<2){ cv.innerHTML=chip("neu","weinig data")+"<span>Nog te weinig buckets om conviction te beoordelen.</span>"; }
+  else if(highHit>=lowHit+5){ cv.innerHTML=chip("good","werkt")+"<span>Hogere conviction → hogere hit-rate. Opschalen op conviction is verantwoord.</span>"; }
+  else { cv.innerHTML=chip("bad","omgekeerd")+"<span>Hoge conviction voorspelt <b>niet</b> beter (nog inverted). <b>Size elke trade gelijk</b> — geen conviction-hefboom.</span>"; }
+  // ── nieuwe edges
+  var sb=document.getElementById("surp"); sb.innerHTML="";
+  var scoredAny=0;
+  if(!surp.length){ sb.innerHTML="<tr><td class='mono' colspan='4'>nog geen signalen</td></tr>"; }
+  surp.forEach(function(r){
+    scoredAny+=Number(r.n_scored||0);
+    sb.insertAdjacentHTML("beforeend","<tr><td class='mono'>"+esc(r.source)+" · "+esc(r.kind)+
+      "</td><td class='num'>"+esc(r.n_scored)+"/"+esc(r.n_total)+
+      "</td><td class='num'>"+fmt(r.hit_pct_20d,"%")+
+      "</td><td class='num'>"+fmt(r.avg_ret_20d_pct,"%",2)+"</td></tr>");
+  });
+  var sv=document.getElementById("surp-verdict");
+  if(scoredAny<MIN_N){ sv.innerHTML=chip("warn","onbewezen")+"<span>Nog "+scoredAny+"/"+MIN_N+" gescoord — <b>onvoldoende bewijs.</b> Wacht tot de machine data opbouwt; nu niet opschalen.</span>"; }
+  else { sv.innerHTML=chip("neu","in beoordeling")+"<span>Bewijs loopt vol — lees hit_pct_20d (>50 = edge) en het teken van avg ret (+ = momentum, − = faden).</span>"; }
+  // ── per bron
+  var xb=document.getElementById("src"); xb.innerHTML="";
+  src.slice(0,6).forEach(function(r){
+    xb.insertAdjacentHTML("beforeend","<tr><td class='mono'>"+esc(r.source)+
+      "</td><td class='num'>"+esc(r.n_scored==null?"—":r.n_scored)+
+      "</td><td class='num'>"+fmt(r.hit_pct,"%")+
+      "</td><td class='num'>"+fmt(r.total_r_20d,"",1)+"</td></tr>");
+  });
+}
+function stat(lab,val,cls){ return "<div><span class='lab'>"+lab+"</span><span class='val "+(cls||"")+"'>"+val+"</span></div>"; }
+
+function tick(){
+  Promise.all([
+    q("v_edge_intel","select=*"),
+    q("v_edge_roi","select=*"),
+    q("v_edge_by_conviction","select=*"),
+    q("v_edge_by_surprise","select=*"),
+    q("v_edge_by_source","select=*&order=total_r_20d.desc.nullslast")
+  ]).then(function(res){
+    render(res[0],res[1],res[2],res[3],res[4]);
+    document.getElementById("dot").classList.remove("err");
+    var d=new Date();
+    document.getElementById("updated").textContent="live · "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+    document.getElementById("banner").classList.remove("show");
+  }).catch(function(e){
+    document.getElementById("dot").classList.add("err");
+    document.getElementById("updated").textContent="offline";
+    var b=document.getElementById("banner");
+    b.textContent="Kan de live data niet ophalen ("+e.message+"). Cijfers kunnen verouderd zijn — check je verbinding of de DB.";
+    b.classList.add("show");
+  });
+}
+tick();
+setInterval(tick,60000);
+</script>
+</body>
+</html>
